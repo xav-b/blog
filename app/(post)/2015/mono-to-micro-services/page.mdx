@@ -1,0 +1,271 @@
+As articles state everywhere, we're living in a fast pace digital age. Project
+complexity, or business growth, challenges existing development patterns. That's
+why many developers are evolving from __[the monolithic application][16]__
+toward __[micro-services][17]__. Facebook is moving away from its [big blue
+app][1]. Soundcloud is [embracing microservices][2].
+
+Yet this can be a [daunting process][3], __so what for ?__
+
+- Scale. Better plugging new components than digging into an ocean of code.
+- Split a complex problem into smaller ones, easier to solve and maintain.
+- Distribute work through independent teams.
+- Open technologies friendliness. Isolating a service into a container makes it
+  straightforward to distribute and use.
+- It also allows different, loosely coupled stacks to communicate.
+
+Once upon a time, there were a fat code block called [Intuition][4], my
+algorithmic trading platform. In this article, we will engineer a simplified
+version divided into well defined components.
+
+
+## Code Components
+
+First, we're going to write the business logic, following the __[single
+responsability principle][5]__ and one of my favorite code mentra :
+
+> Prefer composition over inheritance
+
+The point is to __identify key components__ of the problem, and code a
+__specific solution__ for each of them. It will articulate our application
+around the collaboration of clear abstractions.
+
+As an illustration, we start with the `RandomAlgo` class. Nowadays Python tends
+to be [the _go-to_ language for data analysis and rapid prototyping][17]. A
+great fit for our purpose.
+
+```py
+class RandomAlgo(object):
+	""" Represent the algorithm flow.
+	Heavily inspired from quantopian.com and processing.org """
+
+	def initialize(self, params):
+		""" Called once to prepare the algo. """
+		self.threshold = params.get('threshold', 0.5)
+		# As we will see later, we return here data channels we're interested in
+		return ['quotes']
+
+	def event(self, data):
+		""" This method is called every time a new batch of data is ready.
+		:param data: {'sid': 'GOOG', 'quote': '345'} """
+		# randomly choose to invest or not
+		if random.random() > self.threshold:
+			print('buying {0} of {1}'.format(data['quote'], data['sid']))
+```
+
+This implementation __focuses on a single thing__ : detecting buy signals. But
+once you get such signal, how do you invest your portfolio ? This is the
+responsibility of a new component.
+
+```py
+class Portfolio(object):
+
+	def __init__(self, amount):
+		""" Starting amount of cash we have. """
+		self.cash = amount
+
+	def optimize(self, data):
+		""" We have a buy signal on this data. Tell us how much cash we should bet. """
+		# We're still baby traders and we randomly choose what fraction of our cash available to invest
+		to_invest = random.random() * self.cash
+		self.cash = self.cash - to_invest
+		return to_invest
+```
+
+Then we can improve our previous algorithm's `event` method, taking advantage of
+__composition__.
+
+```py
+def initialize(self, params):
+	# ...
+	self.portfolio = Portfolio(params.get('starting_cash', 10000))
+
+def event(self, data):
+	# ...
+	print('buying {0} of {1}'.format(portfolio.optimize(data), data['sid']))
+```
+
+Here are __two simple components__ that produce readable and efficient code. Now
+we can develop more sophisticated portfolio optimizations without touching the
+algorithm internals. This is also a huge gain early in a project when we're not
+sure how things will evolve.
+
+Developers/quants should only focus on this __core logic__. In the next section,
+we're going to unfold a separate part of the system. The communication layer
+will solve one question:  __how do we produce and consume events__ ?
+
+
+## Inter-components messaging
+
+Let's state the problem. We want each algorithm to receive interesting events
+and publish its own data. The kind of challenge [Internet of Things (IoT)][6] is
+[tackling][8]. We will find empirically that our modular approach allows us to
+pick the right tool, even within _a-priori_ unrelated fields.
+
+The code below leverages [MQTT][7] to bring M2M messaging to the application.
+Notice we're diversifying our stack with node.js. Indeed it's one of [the most
+convenient language][9] to deal with event-oriented systems (Javascript, in
+general, [is gaining some traction in the IoT space][10]).
+
+```js
+var mqtt = require('mqtt');
+
+// connect to the broker, responsible to route messages
+// (thanks mosquitto)
+var conn  = mqtt.connect('mqtt://test.mosquitto.org');
+
+conn.on('connect', function () {
+  // we're up ! Time to initialize the algorithm
+  // and subscribe to interesting messages
+});
+
+// triggered on topic we're listening to
+conn.on('message', function (topic, message) {
+  console.log('received data:', message.toString());
+  // Here, pass it to the algo for processing
+});
+```
+
+That's neat! But we still need to connect this messaging layer with the actual
+python algorithm. [RPC (Remote Procedure Call)][11] protocol comes handy for the
+task, especially with [zerorpc][12]. Here is the full implementation with more
+explanations.
+
+```js
+// command-line interfaces made easy
+var program = require('commander');
+// the MQTT client for Node.js and the browser
+var mqtt    = require('mqtt');
+// a communication layer for distributed systems
+var zerorpc = require('zerorpc');
+// import project properties
+var pkg     = require('./package.json')
+
+// define the cli
+program
+  .version(pkg.version)
+  .description(pkg.description)
+  .option('-m, --mqtt [url]', 'mqtt broker address', 'mqtt://test.mosquitto.org')
+  .option('-r, --rpc [url]', 'rpc server address', 'tcp://127.0.0.1:4242')
+  .parse(process.argv);
+
+// connect to mqtt broker
+var conn  = mqtt.connect(program.mqtt);
+// connect to rpc peer, the actual python algorithm
+var algo = new zerorpc.Client()
+algo.connect(program.rpc);
+
+conn.on('connect', function () {
+  // connections are ready, initialize the algorithm
+  var conf = { cash: 50000 };
+  algo.invoke('initialize', conf, function(err, channels, more) {
+    // the method returns an array of data channels the algorithm needs
+    for (var i = 0; i < channels.length; i++) {
+      console.log('subscribing to channel', channels[i]);
+      conn.subscribe(channels[i]);
+    }
+  });
+});
+
+conn.on('message', function (topic, message) {
+  console.log('received data:', message.toString());
+
+  // make the algorithm to process the incoming data
+  algo.invoke('event', JSON.parse(message.toString()), function(err, res, more) {
+    console.log('algo output:', res);
+    // we're done
+    algo.close();
+    conn.end();
+  });
+
+});
+```
+
+The code above calls our algorithm's methods. Here is how to expose them over RPC.
+
+```py
+import click, zerorpc
+
+# ... algo code ...
+
+@click.command()
+@click.option('--addr', default='tcp://127.0.0.1:4242', help='address to bind rpc server')
+def serve(addr):
+    server = zerorpc.Server(RandomAlgo())
+    server.bind(addr)
+    click.echo(click.style('serving on {} ...'.format(addr), bold=True, fg='cyan'))
+    # listen and serve
+    server.run()
+
+
+if __name__ == '__main__':
+    serve()
+```
+
+At this point we are ready to run the app. Let's fire up 3 terminals, install
+requirements, and make the machines to trade.
+
+```sh
+sudo apt-get install curl libpython-dev libzmq-dev
+# Install pip
+curl https://bootstrap.pypa.io/get-pip.py | python
+# Algorithm requirements
+pip install zerorpc click
+
+# Messaging requirements
+npm init
+npm install --save commander mqtt zerorpc
+```
+
+```sh
+# Activate backend
+python ma.py --addr tcp://127.0.0.1:4242
+# Manipulate algorithm and serve messaging system
+node app.js --rpc tcp://127.0.0.1:4242
+# Publish messages
+node_modules/.bin/mqtt pub -t 'quotes' -h 'test.mosquitto.org' -m '{"goog": 3.45}'
+```
+
+In this state, our implementation is over-engineered. But we designed __a
+sustainable architecture to wire up small components__. And from here we can
+extend the system.
+
+- One can focus on algorithms without worrying about events plumbing.
+- The corollary: switching to a new messaging technology won't affect the way we
+  develop algorithms.
+- We can even swipe algorithms by changing the rpc address. A [service discovery
+  component][13] could expose which backends are available and how to reach
+  them.
+- A project like [octoblu][14] adds devices authentification, data sharing, ...
+- We could implement data sources that connect to live market or databases,
+  compute indicators like moving averages and publish them to algorithms.
+
+
+## Conclusion
+
+Given our API definition, a contributor can hack on any component without
+breaking the project as a whole. In fast pace environment, with constant
+iterations, this architecture can make or break products.
+
+This is especially true in the raising [container world][15]. Assuming we
+package each component into specialized containers, we smooth the way to a
+scalable infrastructure we can test, distribute, deploy and grow.
+
+
+[1]: http://techcrunch.com/2014/04/16/facebook-will-be-unbundling-the-big-blue-app-through-its-creative-labs/
+[2]: http://www.infoq.com/news/2014/06/soundcloud-microservices
+[3]: http://highscalability.com/blog/2014/4/8/microservices-not-a-free-lunch.html
+[4]: https://github.com/intuition-io/intuition
+[5]: http://en.wikipedia.org/wiki/Single_responsibility_principle
+[6]: http://en.wikipedia.org/wiki/Internet_of_Things
+[7]: https://github.com/mqttjs/MQTT.js
+[8]: https://medium.com/@lelylan/how-to-build-an-high-availability-mqtt-cluster-for-the-internet-of-things-8011a06bd000
+[9]: https://nodesource.com/blog/understanding-the-nodejs-event-loop
+[10]: http://www.sitepoint.com/javascript-internet-things/
+[11]: http://fr.wikipedia.org/wiki/Remote_procedure_call
+[12]: http://www.zerorpc.io/
+[13]: https://www.consul.io/
+[14]: https://developer.octoblu.com/
+[15]: https://blog.docker.com/2015/05/dockers-2nd-birthday-by-the-numbers/
+[16]: http://microservices.io/patterns/monolithic.html
+[17]: https://medium.com/aws-activate-startup-blog/using-containers-to-build-a-microservices-architecture-6e1b8bacb7d1
+[18]: http://www.datacommunitydc.org/blog/2013/07/python-for-data-analysis-the-landscape-of-tutorials

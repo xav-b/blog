@@ -1,0 +1,667 @@
+> Bring declarative syntax, templating and modules to Dockerfiles
+
+> Past months saw the rocket spread of container technology among developers and
+> companies alike. Most of the excitement focused on Docker and its workflow to
+> pack, share and deploy application environments. Other technologies catched
+> up, and the automation tool Ansible quickly offered a powerful interface to
+> manage them on remote servers. In this article, I will explore why and how to
+> leverage its extensible design to merge the best of both worlds.
+
+
+TL;DR : Docker empowers us to ship more and more complex projects, yet we still
+have to configure those containers. In many ways Dockerfiles are weak and this
+article describes how Ansible can bring configuration managers' features behind
+a clearer syntax. Learn how to build any stack, with just Python and Docker
+installed.
+
+The New Stack, an online blog backed by industry leaders, analyzed a year ago
+"Are Docker Users Migrating to Ansible and Away from Puppet and Chef?" This
+article (see [Resources](#resources)) covers interesting points:
+
+- Despite the rise of new workflows brought by containers, orchestration and configuration tools are thriving.
+- New players like Ansible and Salt are challenging existing tools like Chef and Puppet.
+- Many developers involved with Docker are also concerned about those tools.
+
+This discussion on Hacker News, the famous startup incubator's community
+website, details the lack of robust tools that ship with Docker to offer an
+end-to-end experience, both for development and for production. Being able to
+spin up full isolated stack environments in a matter of seconds, or replicate an
+exact setup between servers, seduced a large community. But quickly, we needed
+more sophisticated stacks and we shifted from the toy container to a coordinated
+fleet with reproducible builds and multi-host communication skills. The Docker
+team addressed those evolving needs with new clustering tools, trying to morph
+Docker into a reliable solution for running containers at scale.
+
+None of these projects, however, challenge Dockerfiles and how we build them. We
+are still manually hard-coding tasks and repeating common setups. So,
+orchestration and the configuration management of containers are yet to be
+solved.
+
+This article will explore how existing configuration managers fit in the
+container world, and how we can take advantage of their battle-tested skills to
+improve our provisioning workflow.
+
+## The rise of DevOps
+
+Before diving into the world of configuration managers, let's deepen our
+understanding of the pain points mentioned above. Modern applications usually
+involve a complex deployment pipeline before hitting production.
+
+Best practices suggest that you release code early and often, following each
+small iteration. Manually performing the tasks is not scalable, and
+organisations have started refining the process half-way between developers and
+sysadmins, so DevOps was born. Since then, agile teams are trying to strengthen
+and automate the way code is tested and shipped to their users.
+
+State of the art technologies and methodologies allow companies to gain
+confidence over the code on their server. Nevertheless, the whole thing is
+continuously challenged as applications are growing in size and complexity. More
+than ever, we need powerful, community-driven tooling to support our
+products.
+
+## Solutions and limitations
+
+In this environment, Ansible offers an interesting framework to manage
+infrastructures. You can gain control over a servers' definition, like packages
+to install or files to copy, and scale the configuration to thousand of them.
+Ansible playbooks constitute a safe representation of the cluster's desired
+state. Its YAML syntax and extensive list of modules produce readable
+configuration files any developer can quickly understand. Unlike Chef or Puppet,
+it is also agent-less, meaning all it takes to perform commands on remote hosts
+is an SSH connection. This is good news given Ansible will handle DevOps
+complexity for us.
+
+The Ansible project, however, was designed before the rocket rise of containers
+and their revolution in the cloud world. So, is it still relevant?
+Micro-services paradigms and complex development environments have introduced
+new requirements:
+
+- _Lightweight images_. For ease of transportation or cost savings, they are stripped down to their minimal dependencies.
+- _Single purpose, single process_. The SSH daemon should not run if it's not strictly needed by the application.
+- _Ephemeral_. Containers are expected to die, move and resurrect all of the time.
+
+In this context, Ansible's vision addresses two issues.
+
+On the one hand, they developed a module to manage Docker hosts and containers at a higher level. While we can debate which orchestration tool is best suited (see Kubernetes, from Google, or New Relic's Centurion), it performs efficiently, and we will use it as is for our purpose.
+
+On the other hand, they suggest that you build containers starting from their official Ansible image, and execute playbooks in local mode from the inside. This approach fits remarkably well with Packer and certainly suits many cases. But its drawbacks are deal breakers in many others.
+
+- We're locked with one base image and no longer can take advantage of our special recipes or other stacks.
+- The resulting artifact has Ansible and its dependencies installed, which has nothing to do with the actual application, and makes the artifact heavier.
+- Although Ansible can manage thousand of servers, it will only provision a single container.
+
+I think this approach considers containers as small VMs, where we should use a
+specific solution. Fortunately the project has a modular design. Modules spread
+among different repositories and most of its capabilities can be extended
+through plugins. In the next section, we're going to setup a proper environment
+to adapt Ansible to our needs.
+
+## An effective environment
+
+Let's take a step back and describe an alternative strategy. I want a tool
+trivial to deploy, that configures application environments in lightweight
+containers. Apart from those containers, we need a client node with Ansible
+installed to issue commands to a docker daemon. This setup is shown in <xref
+href="#fig1" link="no" />.
+
+As you can see, I am minimizing the dependencies to manage by executing Ansible
+from a container. This approach limits the host to a communication bridge
+between containers and commands.
+
+Many options are available to bring Docker to your server.
+
+- Use docker-machine to install it on remote hosts.
+- Install locally. As a side note, you probably don't want to manage a serious
+  container-based infrastructure by yourself at this point. Consider the next
+  option for production goals.
+- Rely on external providers.
+- Use the awesome boot2docker on Windows and Mac.
+
+Whatever solution you choose, make sure it deploys a docker version above 1.3
+(the release which introduced process injection). You also need to run an SSH
+server to securely process Ansible commands. Instructions in <xref
+href="#listing1" link="no" /> set up a convenient and robust authentication
+method using public keys.
+
+```sh
+# install dependencies
+sudo apt-get install -y openssh-server libssl-dev
+# generate private and public keys
+ssh-keygen -t rsa -f ansible_id_rsa
+# allow future client with this public key to connect to this server
+cat ansible_id_rsa.pub >> ~/.ssh/authorized_keys
+# setup proper permissions
+chmod 0700  ~/.ssh/
+chmod 0600  ~/.ssh/authorized_keys
+# make sure the daemon is running
+sudo service ssh restart
+```
+
+A lot is left to said regarding the configuration of SSH but security concerns
+are beyond the scope of this article. The curious/paranoiac reader should
+explore /etc/ssh/sshd_config to learn more about available options.
+
+The next step is to load the public key on the client container running Ansible
+(see <xref href="#listing2" link="no" />). We might use for the last time a
+Dockerfile to provision the builder.
+
+```dockerfile
+FROM python:2.7
+
+# Install Ansible from source (master)
+RUN apt-get -y update &amp;&amp; \
+    apt-get install -y python-httplib2 python-keyczar python-setuptools python-pkg-resources
+git python-pip &amp;&amp; \
+    apt-get clean &amp;&amp; rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+RUN pip install paramiko jinja2 PyYAML setuptools pycrypto>=2.6 six \
+    requests docker-py  # docker inventory plugin
+RUN git clone http://github.com/ansible/ansible.git /opt/ansible &amp;&amp; \
+    cd /opt/ansible &amp;&amp; \
+    git reset --hard fbec8bfb90df1d2e8a0a4df7ac1d9879ca8f4dde &amp;&amp; \
+    git submodule update --init
+
+ENV PATH /opt/ansible/bin:$PATH
+ENV PYTHONPATH $PYTHONPATH:/opt/ansible/lib
+ENV ANSIBLE_LIBRARY /opt/ansible/library
+
+# setup ssh
+RUN mkdir /root/.ssh
+ADD ansible_id_rsa /root/.ssh/id_rsa
+ADD ansible_id_rsa.pub /root/.ssh/id_rsa.pub
+
+# extend Ansible
+# use an inventory directory for multiple inventories support
+RUN mkdir -p /etc/ansible/inventory &amp;&amp; \
+    cp /opt/ansible/plugins/inventory/docker.py /etc/ansible/inventory/
+ADD ansible.cfg  /etc/ansible/ansible.cfg
+ADD hosts  /etc/ansible/inventory/hosts
+```
+
+Instructions are adapted from the official build and automate a working
+installation from commit `fbec8bfb90df1d2e8a0a4df7ac1d9879ca8f4dde` on Ansible
+master branch. For convenience, I also pack hosts and ansible.cfg configuration
+files. Using a container guarantees we share the same environment but, for
+information, the Dockerfile installs python version 2.7.10 and Ansible 2.0.0.
+
+```toml
+# hosts
+# this file is an inventory Ansible is using to address remote servers. Make sure to replace the
+information with your specific setup and variables you don't want to provide for every command.
+
+[docker]
+# host properties where docker daemon is running
+192.168.0.12 ansible_ssh_user=xavier
+# ansible.cfg
+
+[defaults]
+
+# use the path I created from the Dockerfile
+inventory = /etc/ansible/inventory
+
+# not really secure but convenient in non-interactive environment
+host_key_checking = False
+# free us from typing `--private-key` parameter
+priva_key_file = ~/.sh/id_rsa
+
+# tell Ansible where are the plugins to load
+callback_plugins   = /opt/ansible-plugins/callbacks
+connection_plugins = /opt/ansible-plugins/connections
+```
+
+The following steps build and validate the Ansible container from which we will
+issue commands (see <xref href="#listing4" link="no" />).
+
+First, this is essential to export the DOCKER_HOST environment variable, since
+Ansible will use it to connect to the remote docker daemon. When using an HTTP
+endpoint, like below, we need to modify /etc/default/docker (see <xref
+href="#listing5" link="no" />).
+
+```sh
+# make docker to listen on HTTP and default socket
+DOCKER_OPTS="-H tcp://0.0.0.0:2375 -H unix:///var/run/docker.sock"
+```
+
+`sudo service docker restart` restarts the daemon to pick up the changes we made
+to its configuration file.
+
+```console
+# we need DOCKER_HOST variable to point to a reachable docker daemon
+# pick the method that suits your installation
+
+# for boot2docker users
+eval "$(boot2docker shellinit)"
+# for docker-machine users, provising the running VM was named "dev"
+eval "$(docker-machine env dev)"
+# for users running daemon locally
+export DOCKER_HOST=tcp://$(hostname -I | cut -d" " -f1):2375
+# finally users relying on a remote daemon should provide the server's public ip
+export DOCKER_HOST=tcp://1.2.3.4:2375
+
+# build the container from Dockerfile
+docker build -t article/ansible .
+
+# provide server API version, as returned by `docker version | grep -i "server api"`
+# it should be at least greater or equal than 1.8
+export DOCKER_API_VERSION=1.19
+
+# create and enter our workspace
+docker run -it --name builder \
+    # make docker client available inside
+    -v /usr/bin/docker:/usr/bin/docker \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    # detect local ip
+    -e DOCKER_HOST=$DOCKER_HOST \
+    -e DEFAULT_DOCKER_API_VERSION=DOCKER_API_VERSION \
+    -v $PWD:/app -w /app \  # mount our working space
+    article/ansible bash
+
+# challenge our setup
+$ container > ansible docker -m ping
+192.168.0.12 | SUCCESS => {
+    "invocation": {
+        "module_name": "ping",
+        "module_args": {}
+    },
+    "changed": false,
+    "ping": "pong"
+}
+```
+
+So far so good, we are able to issue commands from a container. From now on, we
+are going to leverage Ansible's Docker-specific extensions.
+
+## Dynamic inventory
+
+At its core, Ansible automates its execution through playbooks: YAML files
+specifying every task to perform and their properties (see <xref
+href="#listing6" link="no" />). It also consults Inventories to map
+user-provided hosts to concrete endpoints in the infrastructure. Unlike the
+static hosts file we used in the previous section, Ansible also supports dynamic
+content. The built-in lists include a Docker plugin capable of querying the
+daemon and exposing to playbooks a significant amount of information.
+
+```yml
+# provision.yml
+
+- name: debug docker host
+  hosts: docker
+  tasks:
+  - name: debug infrastructure
+    # access container data : print our state
+    debug: var=hostvars["builder"]["docker_state"]
+
+# we can target individual containers by name
+- name: configure our container
+  hosts: builder
+  tasks:
+   - name: run dummy command
+     command: /bin/echo hello world
+```
+
+The command below will query the Docker host, import facts, print some and use
+them to perform the second task against the very builder container we are in
+(see <xref href="#listing7" link="no" />).
+
+```console
+ansible-playbook provision.yml -i /etc/ansible/inventory
+# ...
+TASK [setup] ********************************************************************
+fatal: [builder]: FAILED! => {"msg": "ERROR! SSH encountered an unknown error during the
+connection. We recommend you re-run the command using -vvvv, which will enable SSH debugging
+output to help diagnose the issue", "failed": true}
+# ...
+```
+
+Ansible can't reach the container, since it doesn't run an SSH server. However,
+it would be an additional process to manage, completely unrelated to the actual
+application. Let's crush this difficulty.
+
+## Optimization of commands execution
+
+Ansible's extensibility has us covered again. Connection plugins are classes
+implementing commands transport, like SSH or local execution. Docker 1.3 came
+with docker exec and the ability to run tasks inside the container namespace.
+And since we learned earlier how to target specific containers, we can leverage
+this ability to process the playbook.
+
+Like other plugin types, connection hooks (see <xref href="#listing8" link="no"
+/>) inherit an abstract class and are automatically exposed when present into
+the expected directory (/opt/ansible-plugins/connections as we configured in
+ansible.cfg).
+
+
+```py
+# saved as ./connection_plugins/docker.py
+
+import subprocess
+from ansible.plugins.connections import ConnectionBase
+
+class Connection(ConnectionBase):
+
+   @property
+    def transport(self):
+        """ Distinguish connection plugin. """
+        return 'docker'
+
+   def _connect(self):
+        """ Connect to the container. Nothing to do """
+        return self
+
+   def exec_command(self, cmd, tmp_path, sudo_user=None, sudoable=False,
+                     executable='/bin/sh', in_data=None, su=None,
+                     su_user=None):
+        """ Run a command within container namespace. """
+
+    if executable:
+        local_cmd = ["docker", "exec", self._connection_info.remote_addr, executable, '-c', cmd]
+    else:
+        local_cmd = '%s exec "%s" %s' % ("docker", self._connection_info.remote_addr, cmd)
+
+    self._display.vvv("EXEC %s" % (local_cmd), host=self._connection_info.remote_addr)
+    p = subprocess.Popen(local_cmd,
+        shell=isinstance(local_cmd, basestring),
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE)
+
+    stdout, stderr = p.communicate()
+    return (p.returncode, '', stdout, stderr)
+
+    def put_file(self, in_path, out_path):
+        """ Transfer a file from local to container """
+        pass
+
+    def fetch_file(self, in_path, out_path):
+        """ Fetch a file from container to local. """
+        pass
+
+    def close(self):
+        """ Terminate the connection. Nothing to do for Docker"""
+        pass
+```
+
+This code hooks Ansible's methods to perform commands through a more native
+`docker exec`, instead of the default ssh. We need to rearrange a few setup
+steps yet, to instruct Ansible to use this plugin (see <xref href="#listing9"
+link="no" />).
+
+
+```sh
+# modify the builder Dockerfile to upload the plugin code where Ansible is expecting connection plugins
+echo "ADD connection_plugins/docker.py /opt/ansible-plugins/connections/docker.py" >> Dockerfile
+
+# then, we need to explicitely tell which connection hook to use when executing playbooks.
+# we can achieve this by inserting the `connection` property at the top of
+# provision tasks in provision.yml
+
+# - name: configure our container
+#   connection: docker
+#   hosts: builder
+
+# we are ready to redeploy our builder container (providing DOCKER_HOST and
+# DOCKER_API_VERSION are still set like before)
+
+# rebuild the image
+docker build -t article/ansible .
+
+# restart the builder environment
+docker run -it --name builder \
+    # make docker client available inside
+    -v /usr/bin/docker:/usr/bin/docker \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    # detect local ip
+    -e DOCKER_HOST=$DOCKER_HOST \
+    -e DEFAULT_DOCKER_API_VERSION=DOCKER_API_VERSION \
+    -v $PWD:/app -w /app \  # mount our working space
+    article/ansible bash
+
+# rerun provisioning from inside
+ansible-playbook -i /etc/ansible/inventory provision.yml
+# ... Hurrah, full green output ...
+```
+
+At this point, we managed to execute Ansible tasks within containers without
+many requirements on them or the host. This is a huge win regarding our initial
+specs, but we still need to address remaining imprecisions.
+
+## Containers lifecycle
+
+The previous demonstration ran a task on the same node. A more realistic
+workflow would spin up a new base image, provision it and finally commit, push,
+and shutdown the resulting artifact. Thanks to the built-in Docker module, we
+can achieve those steps without additional code (see <xref href="#listing10"
+link="no" />).
+
+```yaml
+---
+- name: initialize provisioning
+  hosts: docker
+
+  - name: start up target container
+    docker:
+      image: python:2.7
+      name: lab
+      pull: missing
+      detach: yes
+      tty: yes
+      command: sleep infinity
+      state: started
+  # dynamically update inventory to make it available down the playbook
+  - name: register new container hostname
+    add_host: name=lab
+
+- name: provision container
+  connection: docker
+  hosts: lab
+  tasks:
+      # ...
+
+- name: finalize build
+  hosts: docker
+  tasks:
+    - name: stop container
+      docker:
+        name: lab
+        image: python:2.7
+        state: stopped
+```
+
+As I mentioned, it would be convenient to automatically name and store the image
+built on successful provisioning. Unfortunately, Ansible's Docker module does
+not implement methods to tag and push images, but we can overcome this
+limitation with plain shell commands.
+
+```sh
+# name the resulting artifact under a human readable image tag
+docker tag lab article/lab:experimental
+
+# push this image to the official docker hub
+# make sure to replace 'article' by your own Docker Hub login (https://hub.docker.com)
+# (this step is optional and will only make the image available from any docker host. You can skip it or even use your own registery)
+docker push article/lab:experimental
+```
+
+Our tool is taking shape, but we are still lacking an essential feature: layer
+caching.
+
+## Cache implementation
+
+Building containers with Dockerfiles often involves many iterations to get it
+right. In order to significantly speed up the process, successful steps are
+cached and reused in subsequent runs.
+
+To replicate this behavior, we need to commit the container state after each
+successful task. Then, we can restart the provisioning process from the last
+snapshot. Ansible promises idempotent tasks, so previously successful ones won't
+be processed twice.
+
+Ansible let's you hook on task events with callback plugins. Those classes are
+expected to implement specific callbacks, triggered at various steps of the
+playbook lifecycle.
+
+```py
+""" Hooking on task events.
+
+Save as callback_plugins/docker-cache.py
+
+"""
+
+import hashlib
+import os
+import socket
+
+# Hacky Fix `ImportError: cannot import name display`
+# pylint: disable=unused-import
+import ansible.utils
+import requests
+import docker
+
+
+class DockerDriver(object):
+    """ Provide snapshot feature through 'docker commit'. """
+
+    def __init__(self, author='ansible'):
+        self._author = author
+        self._hostname = socket.gethostname()
+        try:
+            err = self._connect()
+        except (requests.exceptions.ConnectionError, docker.errors.APIError), error:
+            ansible.utils.warning('Failed to contact docker daemon: {}'.format(error))
+            # deactivate the plugin on error
+            self.disabled = True
+            return
+
+        self._container = self.target_container()
+        self.disabled = True if self._container is None else False
+
+    def _connect(self):
+        # use the same environment variable as other docker plugins
+        docker_host = os.getenv('DOCKER_HOST', 'unix:///var/run/docker.sock')
+        # default version is current stable docker release (10/07/2015)
+        # if provided, DOCKER_VERSION should match docker server api version
+        docker_server_version = os.getenv('DOCKER_VERSION', '1.19')
+        self._client = docker.Client(base_url=docker_host,
+                                     version=docker_server_version)
+        return self._client.ping()
+
+    def target_container(self):
+        """ Retrieve data on the container we want to provision. """
+        def _match_container(metadatas):
+            return metadatas['Id'][:len(self._hostname)] == self._hostname
+
+        matchs = filter(_match_container, self._client.containers())
+        return matchs[0] if len(matchs) == 1 else None
+
+    def snapshot(self, host, task):
+        tag = hashlib.md5(repr(task)).hexdigest()
+        try:
+            feedback = self._client.commit(container=self._container['Id'],
+                                           repository='factory',
+                                           tag=tag,
+                                           author=self._author)
+        except docker.errors.APIError, error:
+            ansible.utils.warning('Failed to commit container: {}'.format(error))
+            self.disabled = True
+
+
+# pylint: disable=E1101
+class CallbackModule(object):
+    """Emulate docker cache.
+    Commit the current container for each task.
+
+    This plugin makes use of the following environment variables:
+        - DOCKER_HOST (optional): How to reach docker daemon.
+          Default: unix://var/run/docker.sock
+        - DOCKER_VERSION (optional): Docker daemon version.
+          Default: 1.19
+        - DOCKER_AUTHOR (optional): Used when committing image. Default: Ansible
+
+    Requires:
+        - docker-py &gt;= v0.5.3
+
+    Resources:
+        - http://docker-py.readthedocs.org/en/latest/api/
+    """
+
+    _current_task = None
+
+    def playbook_on_setup(self):
+        """ initialize client. """
+        self.controller = DockerDriver(self.conf.get('author', 'ansible'))
+
+    def playbook_on_task_start(self, name, is_conditional):
+        self._current_task = name
+
+    def runner_on_ok(self, host, res):
+        if self._current_task is None:
+            # No task performed yet, don't commit
+            return
+        self.controller.snapshot(host, self._current_task)
+```
+
+We register this plugin like we did with the 'docker exec connection', i.e. by
+uploading the code in the expected location and rebuilding the builder
+environment.
+
+```sh
+# Enable task callbacks plugin
+# modify the builder Dockerfile to upload the code where Ansible is expecting callback plugins
+echo "ADD callback_plugins/docker-cache.py /opt/ansible-plugins/callbacks/docker-cache.py" >> Dockerfile
+```
+
+After re-building the builder image and re-running ansible-playbook, the module
+is automatically loaded and you can see how intermediate containers were created
+(see <xref href="#listing12" link="no" />).
+
+```sh
+# Docker images
+REPOSITORY          TAG                     IMAGE ID            CREATED             VIRTUAL SIZE
+factory             bc0fb8843e88566c    bbdfab2bd904        32 seconds ago      829.8 MB
+factory             d19d39e0f0e5c133    e82743310d8c        55 seconds ago      785.2 MB
+```
+
+## Conclusion
+
+Provisioning is a complex topic and the implementation we followed laid the
+foundations for further development. The code itself was simplified and some
+steps still require human intervention. While we are free to choose the base
+image we need, Ansible needs Python to be installed in it (most of the time).
+The cache implementation also deserves a lot more attention, with more specific
+commit namings or cleanup skills for example.
+
+Yet, we crafted a tool capable of executing Ansible playbooks to manage
+containers' configuration. This achievement brings a lot of benefits. We can
+leverage the full power of Ansible, combine, reuse and set up declarative build
+files for the micro-services of an infrastructure. We are also avoiding lock-in
+issues. The plugins we developed wrap playbooks that you can reuse against
+different targets, and minimal requirements make the project compatible with
+most providers.
+
+I hope this article highlighted the limitations of Dockerfiles and some
+interesting ideas around the provisioning of complex containers. This is
+definitely an exciting time to build tooling with them.
+
+
+---
+
+## Resources
+
+
+- [The New Stack](http://thenewstack.io/are-docker-users-migrating-to-ansible-and-away-from-puppet-and-chef/)
+- [Discussion on Hacker news emphasizes the lack of robust tools shipping with Docker to offer an end-to-end experience](https://news.ycombinator.com/item?id=8167928)
+
+- Check out the official Ansible <a href="http://docs.ansible.com/">documentation</a>.
+- Learn about <a href="http://www.ansible.com/docker">Ansible's vision</a>.
+- Get started with the <a href="https://docs.docker.com">Docker documentation</a>.
+- Check out lniks to <a href="https://registry.hub.docker.com">official Docker repositories</a>.
+- <a href="https://docs.docker.com/compose/">Compose</a> is a tool for defining and running complex applications with Docker.
+- Read a <a href="https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-getting-started">tutorial</a> on installing Docker locally Install locally
+- Connect to the <a href="https://developer.ibm.com/bluemix">Bluemix developer community</a>
+- <a href="http://www.ibm.com/developerworks/cloud/library/cl-cloudservicemodels/index.html">Cloud computing service models</a> (Dan Orlando, developerWorks, February 2011): In this three-part series find straightforward, real-world examples of cloud computing to help eliminate the confusion around the concept.
+- <a href="http://www.ibm.com/developerworks/cloud/library/cl-bluemix-dbarnes/index.html">Exploring IBM Bluemix</a> (David Barnes, developerWorks, September 2013): Join IBM's David Barnes as he demonstrates IBM Bluemix, an in-the-cloud platform that provides the cloud application capabilities that will power the next generation of cloud applications and services.
+- Read an <a href="https://www.ibm.com/developerworks/community/wikis/form/anonymous/api/wiki/77eb08fb-0fa9-4195-bad9-a905a1b2d461/page/8051ab37-10c0-41ca-92ae-888ad7cda61e/attachment/f42dc632-0f76-453b-8573-408423c66f2d/media/dev@PULSE-BigInsights-Lab-BlueMix.pdf">Introduction to Hadoop on the cloud using. BigInsights on BlueMix</a>.
+- <a href="https://www.youtube.com/user/IBMetinfo">IBM Emerging Technologies</a> YouTube channel keeps you informed on new technologies from IBM.
+- To listen to interesting interviews and discussions for software developers, check out <a href="http://www.ibm.com/developerworks/podcast/?S_TACT=105AGX44&amp;S_CMP=ART">developerWorks podcasts</a>.
+- <a href="http://www-128.ibm.com/developerworks/offers/techbriefings/?S_TACT=105AGY06&amp;S_CMP=art">developerWorks technical events and webcasts</a>: Stay current with developerWorks technical events and webcasts.
+- Get <a href="http://www.ansible.com/home">Ansible</a>, the powerfulIT  automation tool.
+- Use <a href="https://docs.docker.com/machine/">docker-machine</a> to install  Docker on remote hosts.
+- <a href="https://www.consul.io">Consul</a> is a tool for discovering and configuring services in your infrastructure.

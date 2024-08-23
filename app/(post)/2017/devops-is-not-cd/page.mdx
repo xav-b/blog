@@ -1,0 +1,156 @@
+>  An explanation on the difference and what happens when we treat the two as
+>  the same thing
+
+
+
+The tech world is full of buzzwords and **DevOps** is undoubtly one of the
+best-known of the last few years. I would qualify of _"tech buzzwords"_ any
+powerful technology concept mixed with a generous amount of bullish noise and
+yet smart innovations. Take [Docker][1]. Literally the democratization of
+container technologies, burried under a flow of articles proclaiming production
+deployment was solved.
+
+But it is not. IT departments are under the pressure of (at least) two modern
+expectations : complexe services topology and market agility. Let me illustrate.
+
+
+
+![web server ops](http://i.imgur.com/jj3A5N8.png)
+
+
+
+This topology stolen from [System Design Primer][2], _an organized collection of
+resources to help you learn how to build systems at scale_, is a common
+application architecture. The repartition of data _write_ and _read_ paths
+between different technologies makes the system capable of scaling while
+maintaining data availability and consistency.
+
+It is built upon many moving parts talking to each other in different protocols.
+Yet, [agile development][2] and customers expects developers to :
+
+- quickly release new features based on client feedback
+- keep the service available even during large deployments
+- no lasting crashes, regressions or interruptions
+
+How do you do that ? You cultivate a DevOps philosophy and build a continous
+integration pipeline. Not sure what it means ? Then read on, we will figure it
+out.
+
+
+
+### The confusion of what they share
+
+There is a lot of confusion about the scope covered by **DevOps** and what
+exactly **continuous delivery (CD)** means. So much that we often use them
+somewhat interchangeably. It probably comes from good intentions, though, as the
+two concepts share some wide philosophic goals. Let us read what experts say.
+
+**DevOps** is [defined on AWS][5] as
+
+> the combination of cultural philosophies, practices, and tools that increases
+> an organization’s ability to deliver applications and services at high
+> velocity
+
+**Continuous Delivery**, [as stated by Carl Caum from Puppet][4],
+
+> is a series of practices designed to ensure that code can be rapidly and
+> safely deployed to production by delivering every change to a production-like
+> environment and ensuring business applications and services function as
+> expected through rigorous automated testing
+
+So yeah, both are about delivering code. Both try to enforce practices and tools
+to improve velocity and reliability of softawre in production. Both want the IT
+release pipeline to be as cost-effective and agile as possible. This is no
+surprise also that both of them emerged quite lately.
+
+A few years back, more time and resources were put to improve operational
+efforts (that is **DevOps**) to sustain _time to market_ expectations and
+increasing services complexity (that is **Continuous Delivery**).
+
+To sum up, a culture came out of the market constraints and unlocked powerful
+methodologies for projects development lifecycle. So there are a lot of links
+and correlations between both concepts. Yet they differ and the amalgam can end
+up costly.
+
+
+
+### The cost of their differences
+
+#### Goal scope
+
+In [its definition of what **DevOps** is][6], Atlassian nails a critical
+understanding of the term :
+
+> DevOps doesn’t solve tooling problems. It solves human problems.
+
+It is the culture, the organizational intent. It tries to promote the idea that
+IT and operational teams should work seamlessly together, and design tools and
+processes to ensure high velocity development-to-production cycles.
+
+**Continuous Delivery** on the other hand, narrows this scope to a single mentra
+: your code should always be able to be safely released. It means that any
+change goes through an automated pipeline of tests (units, integrations,
+end-to-end) before being promoted to production. [Martin Fowler nicely sums
+up][7] the immediate benefits of this sophisticated deployment routine:
+_"reduced deployment risk, believable progress and user feedback"_.
+
+#### Consequences
+
+Applying **CD** is difficult and requires both advanced operational knowledge
+and enough resources to setup the pipeline that fit the team. Without a
+**DevOps** culture, one will lack team communication and technical resources and
+will end-up with a poor design. It will hurt the most critical IT pipeline :
+longer release cycles, more unexpected behaviours in production, slow feedback
+loop. Developers and management might fear the deployment step and become less
+agile.
+
+The reverse situation, **DevOps** without **CD**, is less dangerous but equally
+inefficient. While we insist that **DevOps** is a culture, it is by no mean
+supposed to stay a theory. The purpose of this movement is to empower teams to
+build better tools and better processes to deliver code. The time (money) spent
+to bootstrap such a culture shouldn't be zeroed by the lack of concrete actions.
+**CD** delivery is a powerful asset for projects trying to conquer a market in a
+lean fashion. It overcomes the investments with teams of developers focused on
+business problems, delevering to clients tested solutions as fast as they are
+ready.
+
+
+
+### Conclusion
+
+We argued in this short post that **CD** and **DevOps** are two different
+concepts in how modern teams understand IT operations. Ignoring one of them
+induces waste of resources and poor engineering efficiency. But it is important
+to recall that the wide scope of the later and the complexity of the former mean
+a lengthy adoption process. Just make it right. It perfectly makes sense to
+gradually install a **DevOps** culture that will, one tool after another, solve
+or improve engineering pains. Not all projects need something as rigourous as a
+**Continuous Delivery** pipeline. But it is certainely a competitive advantage.
+
+So keep the communication channels open, think of outsourcing the most complex
+parts to [cloud providers][8] (or [open source][7]) if needed, understand the
+value of automated tests and feedback-loop, and hire awesome people to take
+responsabilities on this matter. Not only you won't  be bitten by what we
+described above, but you will deliver sustainable value much quicker.
+
+A final word of caution. As sophisticated as they are, those methodologies are
+not magic. A service as critical as [AWS S3][10] claims 99.999999999% durability
+thanks to rigorous engineering methods and yet, on February 28th, [it suffered a
+large service disruption][11]. Code delivery is hard, keep your processes sharp
+!
+
+
+---
+
+
+
+[1]: www.docker.com
+[2]: https://github.com/donnemartin/system-design-primer
+[3]: https://en.wikipedia.org/wiki/Agile_software_development
+[4]: https://puppet.com/blog/continuous-delivery-vs-continuous-deployment-what-s-diff
+[5]: https://aws.amazon.com/devops/what-is-devops/?nc1=f_ls
+[6]: https://fr.atlassian.com/devops
+[7]: https://jenkins.io/solutions/pipeline/
+[8]: https://aws.amazon.com/fr/devops/continuous-delivery/
+[10]: https://aws.amazon.com/s3/
+[11]: https://aws.amazon.com/message/41926/

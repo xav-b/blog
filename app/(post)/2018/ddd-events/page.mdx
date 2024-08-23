@@ -1,0 +1,240 @@
+> **Abstract**: I didn’t think about it but actually I believe the perspective
+> of “cloud” on this matter makes it very interesting : how to apply
+> progressively DDD ideas to cloud architectures and why. This is a new and
+> trendy paradigm and I met many CTOs whos concerns were how to make time for
+> integrating it into their legacy codebase. Having microservices and an
+> event-based design makes it possible and safer so I can develop on that : 1.
+> What is DDD applicable to the cloud and why we want it in our stack 2.
+> Strategy and micro services to the rescue 3. Events and event sourcing to go
+> further
+
+---
+
+`TDD`, `Test Driven Development` is quite a thing among developers. On one hand
+most of us acknowledge the beauty of the idea and thrive to use it here and
+there when new projects pop up with good intentions. But on the other hand this
+is one of the first thing we cut when business requirements, lazyness, or
+prototyping spirit take over the initial plan. I guess we all have some kind of
+partially adapted version of `TDD` at some place in our repository.
+
+So what are we going to talk about here ? What does `DDD` stand for ? A 15th
+évolution of some kind of software pattern that will enforce rigorous code while
+keeping developers happy and productive ? After all `DDD` is `Domain Driven
+Development`, quite the same _look and feel_.
+
+I understand `DDD` like a set of strategies and thinking tools that can help
+designing system and manage complexities. You can learn a lot more online and in
+this article we won't dive too deep into the theory and roots, although it will
+remain mostly a high level reflexion. Instead I want to develop how interesting
+it is when architecting cloud applications. We will try to keep it concrete,
+talk about integration in existing stacks and especially how it can help
+building powerful _event sourcing_ systems.
+
+
+## Why it's worth it
+
+I'm no expert in _Domain Driven Development_ but I tinkered enough with it to
+make my own idea and take the points I thought interesting to include into my
+_system design_ toolbox. Basically `DDD` tries to manage technical complexity by:
+
+- Minimizing technical debt - the accidental complexity various factors brought
+  into the project. It is often a necessary evil that rushing to MVP (Minimum
+  Viable Product) or cutting corners to win market share grow projects into big
+  monolith of mysterious mechanisms (what `DDD` calls _[Big Balls Of Mud][1]).
+- Controlling inherent problem complexity - the inherent difficulty of solving
+  your specific business case. Like [Paul Graham says][2], you are probably
+  (hopefully) trying to solve something hard enough that your competitors didn't
+  figure out how to outrun you on the market.
+
+How ? Martin Fowler [sums it well enough][3] :
+
+> DDD is about designing software based on models of the underlying domain. A
+> model acts as a
+> [UbiquitousLanguage](https://martinfowler.com/bliki/UbiquitousLanguage.html)
+> to help communication between software developers and domain experts. It also
+> acts as the conceptual foundation for the design of the software itself - how
+> it's broken down into objects or functions.
+
+![DDD diagram](/images/old-articles/ddd-figure-1.png)
+
+Thinking about software this way brings a lot of advantages indeed. You can (you
+need) to explicitely bound context so that teams can solve specific problems
+with specific solutions.
+
+- It becomes simpler : big problems are cut into more manageable one you can
+  focus on.
+- Everyone go faster, especially on the long term since they can go parallel and
+  progress with a clearer understanding of the problems' context.
+
+**Ideally** of course but we will discuss nuances later. All those details let
+us recognise the link with cloud applciations. As we said `DDD` provides us with
+strategies for modelising problems and design architectural solutions that we
+can implement with code and functions. But I do believe the principles hold for
+service architectures. Bringing the right people together to think about what
+domains need to be modelled and how they interface with each other are a great
+playbook for designing services topology.
+
+It is also a good proxy to confirm during development that we serve real
+business needs. All too often engineers fall for beautiful architectures where
+quicker and less exciting approaches would have been enough. Defining
+applications context and usage with other characters and in the perspective of
+real life models is certainly a good reality check when we dive too deep into
+the technical details.
+
+
+## Micro-services can help
+
+Unfortunately I met a lot of engineering leaders or `DDD` enthousiasts that
+acknowledge the potential but didn't know how to  bring it to their stack. As
+[Eric Evans](https://domainlanguage.com/) stated, it is a costly and invasive
+process and one really need to both justify the need and make it right. I will
+let you judge if your domains need this level of complexity management and if
+your software needs those patterns to avoid being quickly brittle. And of course
+there are probably other strategies but I did witnessed a common pattern among
+those who took the step to make it part of their stack : one service at the
+time.
+
+It may sound obvious but it just makes sense. First follow `DDD` advises :
+gather people and define your domains. You will probably find opportunities for
+new services and then you can design those services in a `DDD` fashion. Simple
+as that. Yet powerful because you can recognise all the agile benefits. If you
+start with only one service it makes the process of integration easier to learn
+for newcomers and easier to iterate on and tweak to the way you already work.
+This is also easier to reverse. You still take the risk of calling it off and
+regret having lost quite a lot of time, but chances are most of the code will
+still be useable and the knowledge gained to identify domains still useful.
+
+What's more, all those patterns and process details will be hidden behind some
+kind of remote interface. Being a [CRUD/REST][4] API or a [GraphQL endpoint][5],
+the other parts of your stack should be light to modify. And as you design code
+following `DDD` practice and decouple clients from core logic, it will become
+even simpler.
+
+![architecture](/images/old-articles/ddd-figure-2.png)
+
+This is especially true if micro-services are already in place since you can
+recognize the same advantages : smaller and better bounded components that we
+can easily modify as long as the other components know how to interface with
+them. This notion of interface is key. It is directly linked to the importance
+of good bounded contexts in `DDD` and to good decoupling of services in
+micro-services. That is one of the great reason I think it makes sense to
+integrate them together : they help each other.
+
+It is worth noting that having already in place such architecture doesn't
+necessarily mean it will be easier to bring `DDD` on the table. I can think of
+three cases :
+
+- Micro services in place. The good news is you probably don't need to develop
+  all the bolts and details needed for micro-services to work : service
+  discovery, log management, deployment process, … But bad services topology is
+  a great technical debt and may be harder to fix since you might be forced to
+  move around features between pieces of code that didn't even run on the same
+  servers.
+- Monolith in place : probably one of the most classic startup-case in 2017. You
+  are certainly dying from moving brittle code into it's own service and `DDD`
+  will help you a lot. But keep in mind that micro-services come at a price.
+  Google develops on only one repository because the coordination between teams
+  and the consistency between their applications are really different. Yet
+  engineering is about trade-off and `DDD` gives good reasons (technical and
+  business wise) for switching.
+- Monolith in place (bis) : new features are probably still coming in so get a
+  team together and let them design the new service as a squad. All the
+  isolation will also force to clearly define the contexts, the scope, the
+  models and everything needed to get at the end a new service that they can
+  actually present following the principles we mentionned. This is an excellent
+  opportunity to assess what they gained doing so, if it worths it and how to
+  improve it.
+
+It might be a good transition to talk about teams and business. In real life all
+of this comes to serve a business and since `DDD` tries to conciliate languages
+of all department we can't skip this detail of course. What makes the idea
+really interesting, in my own opinion, is that it could solve a lot of satellite
+problems. Communication in companies, like culture, is hard to get right. Having
+a common framework to make it easier between departments to talk about the
+business issues is really valuable. Engineering can better understand why their
+code make sense and how to prioritise. Product owners have an easier time doing
+the interface. Sales and executives also better understand where the IT is on
+the roadmap and what are the challenges, the expectations.
+
+So spending time to get developers to embrace this philosophy goes further than
+just following a new software pattern or strategy. It could help them better
+communicate in the company. And it will also give them a great set of tools to
+think about solving problems. All the trade offs of micro-services and how to
+model problems to solve come into a new light and a new vocabulary under `DDD`.
+
+We insisted a lot on why we need to use it. Let's get a little fancy and push
+the idea a little further, in a less obvious and generic area : [event
+sourcing][6].
+
+## Match in heaven with Event Sourcing
+
+I will fly faster over this one so I can just reach your curiosity and may be
+encourage you to investigate further the opportunity.
+
+Event sourcing is a strategic pattern that enforce thinking your application as
+a series of events you need to store any time something changes the state of
+your world. This way one can review, understand, replay, debug and do whatever
+is required on the history of events. It is more and more discussed today as
+data streaming and state management become relevant to modern development. [Read
+this][7] if you want to spend well the next hour and get a good understanding of
+all the implication and benefits. But this is the kind of idea that powers
+relational databases or companies like Linkedin.
+
+![events](/images/old-articles/ddd-figure-3.png)
+
+This is hard to implement but the kind of architecture and tools possible on top
+of it makes it worth the effort. And I found out that `DDD` and everything we
+said can help. If so far you implemented micro-services that solve a specific
+problem by defining clear interfaces, vocabularies and bounded contexts, you are
+in a very good spot to look into _Event sourcing_.
+
+The decoupling let you reason about data flow in a clear manner and you can
+probably organize it as events triggering actions. This is often implemented as
+task queues so in this case you can get started by ensuring you are storing all
+the original events and may be for example stop polling for changes and instead
+waiting for inputs. As a side note it fits perfectly the kind of values
+[lambda][8] architectures offer.
+
+Then the consistent vocabulary defined will help you define what those events
+actually are. Technical constraints will come into play (like caching database
+queries or limiting connections bottleneck) but you will think about the problem
+with the right business goal and context in mind. Then it will be much more
+future proof. Basing your reasonning on your core value that remain the same
+throughout the product development makes for a consistent evolution.
+
+The integration is also safer for the same reasons micro-services decouple
+components. There are a lot of benefits and you will have an easier time
+managing teams and building tools on top on architectures that are close to
+business knowledge and natural to think about for everyone involved in the
+project.
+
+
+
+## Conclusion
+
+This was a very theoric post where I essentially reflected on the past months
+spent at my current company Kpler working on this kind of approaches. We were
+very successful at implementing pieces and bits, here and there, of `DDD` and
+`Event Sourcing` where we needed to meet strong requirements in term of data
+quality and load. It wasn't easy of course. We had to educate the team on the
+new projects, justify the additional time spent on experimentations and
+failures. But out of it came stronger services with great flexibility for
+integration in our stack and future features.
+
+So I hope it gives you the curiousity to investigate and experiment on your own.
+Being a side project or a new service, you will certainely gain great insights
+for your future projects by tinkering with those advanced patterns. And given
+the time we spent at meetups and events talking with other companies, I am
+confident your teams and business will share this output.
+
+
+---
+
+[1]: https://blog.codinghorror.com/the-big-ball-of-mud-and-other-architectural-disasters/
+[2]: http://paulgraham.com/wealth.html
+[3]: https://martinfowler.com/bliki/BoundedContext.html
+[4]: https://softwareengineering.stackexchange.com/questions/120716/difference-between-rest-and-crud
+[5]: http://graphql.org/
+[6]: https://martinfowler.com/eaaDev/EventSourcing.html
+[7]: https://engineering.linkedin.com/distributed-systems/log-what-every-software-engineer-should-know-about-real-time-datas-unifying
+[8]: https://en.wikipedia.org/wiki/Serverless_computing

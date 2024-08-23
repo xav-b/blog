@@ -1,0 +1,369 @@
+I had the opportunity to study the data science market lately and discovered
+some appealing products. We hunted a service that would let my team focus on
+actual data exploration and high business value models. You know, getting the
+[_DevOps_][devops] stuff out of the way.
+
+Most of the tools offered a way to code your own data pipeline and expose it
+behind an hosted [REST API][rest]. I think it is a simple and reasonable
+approach:
+
+- Plug-and-Play models that scale automatically lowers the risk of deploying
+  cutting edge technologies
+- You still have full control of the business/technical logic
+- Most of developers are comfortable interacting with APIs
+
+As desperate victims of the NIH syndrom ([_Not Invented Here_][nih]) let's build
+such service _for fun and profit_ !
+
+
+## The scene
+
+Allow me to make up a realistic business case. We have of mobile application
+firing a storm of events on a dedicated API written in [Node.js][nodejs] for
+performance, [industry trending][trend] and [asynchronous][async] kind of
+motivations.
+
+It forwards those events (like clicks, downloads, ...) to an online machine
+learning model to feed its comprehension of our users' behavior.
+
+This setup brings near real-time representation of the world and aims for a
+dynamic and accurate prediction engine. Python is a reasonable choice given its
+battle-tested data science ecosystem and highly productive environment. The
+challenge yet is to link the API to the Python backend which needs to react to
+each single new event. In this article I will draft the first critical steps of
+a solution to this modern mission.
+
+Side note : while we laid the foundation of a specific business case, I hope you
+will find interesting inspirations for more general reactive Python projects.
+
+
+## The stack
+
+I will spare you the full research and jump to the interesting [RPC][rpc]
+(Remote Procedure Call) part. [Microservices][microservices] rise found in this
+protocole a reliable and elegant approach for inter-communication. Indeed we
+will see how a service can expose its methods to language-agnostic clients.
+
+Google released a [comprehensive framework][grpc] using Protocol Buffers that
+certainely suits massive and demanding distributed infrastructures. I found,
+however, a simpler alternative in [ZeroRPC][0rpc] while still production-tested
+(at Dotcloud in the old days before Docker). The project uses [ZMQ][zmq] to
+bridge services through RPC and support Node.js and Python.
+
+Enough with tools of the trade, let's get started.
+
+
+## The processing layer
+
+We are going to develop and expose a model describing the impact of different
+media ads on sales. To spice up the challenge, it will be continuously updated
+when new data is available. Dependencies are heavy but easy to install :
+
+```sh
+$ python --version
+Python 2.7.10
+$ # It should work with Python 3 but installation is tricky. See:
+$ # https://github.com/0rpc/zerorpc-python/issues/108
+
+$ # depending on your Python setup you might need sudo
+$ (sudo) pip install
+  statsmodels==0.6.1 \
+  pandas==0.18.1 \
+  scipy==0.17.1 \
+  patsy==0.4.1 \
+  zerorpc==0.5.2
+```
+
+This part of the application is the server-side of ZeroRPC services. It serves
+methods to clients becoming able to call them.
+
+```py
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+# vim:fenc=utf-8
+#
+# filename: predict.py
+
+import random
+import zerorpc
+
+
+class OnlineLinearRegression(object):
+    """Remote machine learning process."""
+
+    def predict(self, data):
+        return random.random()
+
+
+if __name__ == '__main__':
+    engine = zerorpc.Server(OnlineLinearRegression())
+    engine.bind('tcp://0.0.0.0:4242')
+
+    try:
+        engine.run()
+    except KeyboardInterrupt:
+        print('caught CTRL-C, shutting down')
+```
+
+Running `python predict.py` will allow client to connect on `0.0.0.0:4222` and
+call the `predict()` class function. ZeroRPC takes care of serializing arguments
+and return values, which is comfortable but forbid anything other than primitive
+types (integers, strings, ... but no `dataframes` for example).
+
+Now that we have the communication skeleton, let's implement the continuous
+learning model. To keep things digest, we will stick to a [linear
+regression][regression] to analyze sales data. We can answer a handful of
+business questions with this approach and it will bound lines of code. You will
+find more details in [this playbook][playbook].
+
+```py
+import pandas as pd
+import statsmodels.formula.api as smf
+
+DATA_URL = 'http://www-bcf.usc.edu/~gareth/ISL/Advertising.csv'
+
+
+class OnlineLinearRegression(object):
+    """Remote machine learning process."""
+
+    def __init__(self):
+        self._data = pd.read_csv(DATA_URL, index_col=0)
+        print('downloaded data:\n{}'.format(self._data.head()))
+        print('initializing model...')
+        self.lm = smf.ols(formula='Sales ~ TV', data=self._data).fit()
+
+    def train(self):
+        self.lm = smf.ols(formula='Sales ~ TV', data=self._data).fit()
+        print('re-trained model (new params: {})'.format(self.lm.params))
+        return self.lm.summary().as_html()
+
+    def learn(self, knowledge):
+        row = pd.DataFrame([knowledge], columns=self._data.columns)
+        self._data = self._data.append(row)
+        return self._data.describe().to_json()
+
+    def predict(self, data):
+        return self.lm.predict(pd.DataFrame(data))[0]
+```
+
+I highly recommend you to play with the dataset in [an interpreter][ipython] :
+
+```py
+In [1]: import pandas as pd
+
+In [2]: data =
+pd.read_csv('http://www-bcf.usc.edu/~gareth/ISL/Advertising.csv',
+index_col=0)
+
+In [3]: data.head()
+Out[3]:
+            TV  Radio  Newspaper  Sales
+      1  230.1   37.8       69.2   22.1
+      2   44.5   39.3       45.1   10.4
+      3   17.2   45.9       69.3    9.3
+      4  151.5   41.3       58.5   18.5
+      5  180.8   10.8       58.4   12.9
+
+```
+
+Run the script and jump to the next session to consume the API.
+
+```sh
+$ python predict.py
+downloaded data:
+      TV  Radio  Newspaper  Sales
+      1  230.1   37.8       69.2   22.1
+      2   44.5   39.3       45.1   10.4
+      3   17.2   45.9       69.3    9.3
+      4  151.5   41.3       58.5   18.5
+      5  180.8   10.8       58.4   12.9
+Initializing model ...
+listening on :4222 ...
+```
+
+
+## The reactive layer
+
+In this section we will write a minimalist [express][express] API to bridge HTTP
+requests and our Prediction service. Again, a few commands should fetch
+everything the requirements. The code uses modern [es6][es6] syntax so you will
+need [latest Node.js][node6] or a transpiler like [Babel][babel].
+
+```sh
+$ node --version
+v6.0.0
+$ npm --version
+3.8.6
+
+$ # libzmq differs from platform to platform. For Mac OSX users:
+$ brew install libzmq
+
+$ npm install express zerorpc
+```
+
+The strategy is to map each Python method to an HTTP endpoint, so we can fully
+access and exchange data witht the model. Since the code fits in a single file,
+I pasted the content below with (hopefully) descriptive comments, and no error
+handling (bad, don't reproduce at home).
+
+```js
+// import and initialize libraries
+const express = require('express')
+const bodyParser = require('body-parser')
+const zerorpc = require('zerorpc')
+
+const app = express()
+const client = new zerorpc.Client()
+
+// Express server configuration
+// parse application/json
+app.use(bodyParser.json())
+// parse application/x-www-form-urlencoded
+app.use(bodyParser.urlencoded({ extended: true  }))
+
+// define API routes and controllers
+
+app.post('/v1/ia/learn', (req, res) => {
+  // read new data to feed the model
+  const new_insights = req.body.data
+
+  // example: [3.45, 34.6, 12.2, 8.4]
+  client.invoke('learn', new_insights, (err, feedback, more) => {
+    // send back result for debugging / information puprose
+    res.status(202).json({ feedback })
+  })
+})
+
+// tell the model to update (call it after sending some data)
+app.get('/v1/ia/train', (req, res) => {
+  client.invoke('train', (err, data, more) => {
+    // return html rendering, visit localhost:3000/v1/ia/train to
+    // execute training and inspect resulting linear regression parameters
+    res.status(200).send(data)
+  })
+})
+
+// finally use the resulting model and ask for prediction based on
+// current ingested values
+app.get('/v1/ia/predict', (req, res) => {
+  // let's see how a value of 50 units on TV ads will presumably impact sales
+  const example_query = { TV: [50] }
+  client.invoke('predict', example_query, (err, data, more) => {
+    res.status(200).json({ data })
+  })
+})
+
+client.connect('tcp://127.0.0.1:4242')
+
+app.listen(3000, () => console.log('API is listening on port 3000'))
+```
+
+Ready ?
+
+```sh
+$ node api.js
+API is listening on port 3000
+```
+
+Yeah, both services are.
+
+
+## Cross-language real-time predictions
+
+Here we are to the actual reward. Assuming our API and engine backend
+are still running, let's play with the model from the command line.
+
+First we simulate some new data hitting the API, like new sales
+statistics as captured by an application.
+
+```sh
+$ curl -X POST \
+  -H "Accept:application/json" \
+  -d 'data[]=3.14&data[]=34.6&data[]=12.2&data[]=8.4' \
+  localhost:3000/v1/ia/learn
+{"feedback":"{\"TV\":{\"count\":202.0,\"unique\":191.0,\"top\":109.8,\"freq\":2.0},\"Radio\":{\"count\":202.0,\"unique\":168.0,\"top\":5.7,\"freq\":3.0},\"Newspaper\":{\"count\":202.0,\"unique\":173.0,\"top\":25.6,\"freq\":3.0},\"Sales\":{\"count\":202.0,\"unique\":122.0,\"top\":9.7,\"freq\":5.0}}"}%
+```
+
+The response is the dataset summary after update. You can run this command
+several times and see the `Json` evolves to reflect new insights we sent in the
+Python internal data representation.
+
+Yet, we need to train it to take into account the data aggregated. Just visit
+`http://localhost:3000/v1/ia/train` from your favorite `$BROWSER` and watch the
+current OLS regression state. Here is mine :
+
+```yaml
+# OLS Regression Results
+Dep. Variable:  Sales
+R-squared:  0.612
+Model:  OLS Adj.
+R-squared: 0.610
+Method: Least Squares
+F-statistic:  312.1
+Date: Mon, 16 May 2016
+Prob (F-statistic): 1.47e-42
+Time: 13:04:51
+Log-Likelihood: -519.05
+No. Observations: 200
+AIC:  1042.
+Df Residuals: 198
+BIC:  1049.
+Df Model: 1
+Covariance Type: |
+  nonrobust coef  std err t P>|t| [95.0% Conf. Int.]
+  Intercept 7.0326  0.458 15.360  0.000 6.130 7.935
+  TV  0.0475  0.003 17.668  0.000 0.042 0.053
+Omnibus:  0.531
+Durbin-Watson:  1.935
+Prob(Omnibus):  0.767
+Jarque-Bera (JB): 0.669
+Skew: -0.089
+Prob(JB): 0.716
+Kurtosis: 2.779 Cond. No. 338.
+```
+
+And finally we can request a prediction from this very model.
+
+```sh
+$ curl localhost:3000/v1/ia/predict
+{"prediction":9.409425570778684}
+```
+
+The response tells us that an hypothetic value of `50` on TV ads will get us to
+`9.4` in sales.
+
+
+## Conclusion
+
+Let's pat our back : we built a cross platform application exposing real-time
+model fitting and business prediction as a _RESTFul service._ Before funding a
+startup, notice we pass silent lot of serious things like API security, error
+handling, model building dark magic like feature engineering.
+
+Nevertheless the business logic is encapsulated into a Python class that don't
+need to bother about data interfaces and external constraints, yet still being
+able to continuously adapt itself to the reality. Data engineers can improve the
+prediction process behind an API, saving the mobile team from deploying new
+versions to catch up.
+
+
+[devops]: https://en.wikipedia.org/wiki/DevOps
+[rest]: https://en.wikipedia.org/wiki/Representational_state_transfer
+[nih]: http://www.webopedia.com/TERM/N/not_invented_here_syndrome.html
+[nodejs]: https://nodejs.org/en/
+[trend]:
+https://arc.applause.com/2016/03/22/javascript-is-the-worlds-dominant-programming-language/
+[async]: http://callbackhell.com/
+[rpc]: https://en.wikipedia.org/wiki/Remote_procedure_call
+[microservices]: http://martinfowler.com/articles/microservices.html
+[grpc]: http://www.grpc.io/
+[0rpc]: http://www.zerorpc.io/
+[zmq]: http://zeromq.org/
+[regression]:
+hhttps://github.com/justmarkham/DAT4/blob/master/notebooks/08_linear_regression.ipynbttp://scikit-learn.org/stable/auto_examples/linear_model/plot_ols.html
+[playbook]: https://github.com/justmarkham/DAT4/blob/master/notebooks/08_linear_regression.ipynb
+[ipython]: https://ipython.org/
+[express]: http://expressjs.com/
+[babel]: https://babeljs.io/
+[node6]: https://nodejs.org/en/blog/release/v6.0.0/
+[es6]: https://github.com/lukehoban/es6features

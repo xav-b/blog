@@ -1,0 +1,325 @@
+![demo](/images/old-articles/dashboard.png)
+
+I spent the last six months working on data analytics and machine learning to
+feed my curiosity and prepare my new job. It is a challenging mission and I
+chose to give up for a while on my current web projects to stay focus. Back
+then, I was coding a dashboard for an automated trading system, powered by an
+exciting new framework from Facebook : [React][1]. In my opinion, [Web
+Components][2] was the way to go and React seemed gentler with my brain than,
+say, [Polymer][3]. One just needed to carefully design components boundaries,
+properties and states and bam, you got a reusable piece of web to plug anywhere.
+Beautiful.
+
+This is quite a naive way to put it of course but, for an [MVP][4], it actually
+kind of worked. Fast forward to last week, I was needing a new dashboard to
+monitor various metrics from my shiny new infrastructure. Specialize
+requirements kept me away from a full-fledged solution like [InfluxDB][5] and
+[Grafana][6] combo, so I naturally starred at my old code.
+
+Well, it turned out I did not reuse a single line of code. Since the last time I
+spent in web development, new tools, frameworks and methodologies had taken over
+the world : [es6][7] (and [transpilers][8]), [isomorphic applications][9],
+[one-way data flow][10], [hot reloading][11], [module bundler][12], ...
+
+Even [starter kits][13] are remarkably complex (at least for me) and I got
+overwhelmed. But those new toys are also truly empowering and I persevered. In
+this post, we will learn to leverage them, build the simplest dashboard possible
+and pave the way toward modern, real-time metrics monitoring.
+
+
+## Tooling & Motivations
+
+I think the points of so much tooling are productivity and complexity
+management.
+
+New single page applications usually involve a significant number of moving
+parts : front and backend development, data management, scaling, appealing UX,
+... Isomorphic webapps with [nodejs][14] and [es6][24] try to harmonize this
+workflow sharing one readable language across the stack. Node already sells the
+_"javascript everywhere"_ argument but here, it goes even further, with code
+that can be executed both on the server and in the browser, indifferently. Team
+work and reusability are improved, as well as SEO (Search Engine optimization)
+when rendering HTML on server-side.
+
+Yet, applications' codebase can turn into a massive mess and that's where Web
+Components come handy. Providing clear contracts between modules, a developer is
+able to focus on subpart of the UI with an explicit definition of its parameters
+and states. This level of abstraction makes the application much more easy to
+navigate, maintain and reuse. Working with React gives a sense of clarity with
+components as Javascript objects. Lifecycle and behavior are explicitly detailed
+by pre-defined hooks, while properties and states are distinct attributes.
+
+We still need to glue all of those components and their dependencies together.
+That's where [npm][15], [Webpack][16] and [Gulp][17] join the party. Npm is the
+_de facto_ package manager for nodejs, and [more and more for frontend
+development][18]. What's more, it can run for you scripts and spare you from
+using a task runner like Gulp. Webpack, meanwhile, bundles pretty much anything
+thanks to its loaders. Feed it an entrypoint which `require` your js, [jsx][19],
+css, whatever ... and it will transform and package them for the browser.
+
+Given the steep learning curve of modern full-stack development, I hope you can
+see the mean of those tools. Last pieces I would like to introduce for our
+little project are [metrics-graphics][20] and [react-sparklines][21] (that I
+won't actually describe but worth noting for our purpose). Both are neat
+frameworks to visualize data and play nicely with React, as we are going to see
+now.
+
+
+## Graph Component
+
+When building components-based interfaces, first things to define are what
+subpart of the UI those components are. Since we start a spartiate
+implementation, we are only going to define a `Graph`.
+
+```jsx
+// Graph.jsx
+
+// new es6 import syntax
+import React from 'react';
+// graph renderer
+import MG from 'metrics-graphics';
+
+export default class Graph extends React.Component {
+
+  // called after the `render` method below
+  componentDidMount () {
+    // use d3 to load data from metrics-graphics samples
+    d3.json('node_modules/metrics-graphics/examples/data/confidence_band.json', function(data) {
+    data = MG.convert.date(data, 'date');
+    MG.data_graphic({
+        title: {this.props.title},
+        data: data,
+        format: 'percentage',
+        width: 600,
+        height: 200,
+        right: 40,
+        target: '#confidence',
+        show_secondary_x_label: false,
+        show_confidence_band: ['l', 'u'],
+        x_extended_ticks: true
+      });
+    });
+  }
+
+  render () {
+    // render the element targeted by the graph
+    return <div id="confidence"></div>;
+  }
+}
+```
+
+This code, a trendy combination of es6 and jsx, defines in the DOM a standalone
+graph from the json data in [`confidence_band.json`][22] I stole on Mozilla
+official examples.
+
+Now let's actually mount and render the DOM in the main entrypoint of the
+application (I mentioned above with Webpack).
+
+```jsx
+// main.jsx
+
+// tell webpack to bundle style along with the javascript
+import 'metrics-graphics/dist/metricsgraphics.css';
+import 'metrics-graphics/examples/css/metricsgraphics-demo.css';
+import 'metrics-graphics/examples/css/highlightjs-default.css';
+
+import React from 'react';
+import Graph from './components/Graph';
+
+function main() {
+	// it is recommended to not directly render on body
+    var app = document.createElement('div');
+    document.body.appendChild(app);
+
+	// key/value pairs are available under `this.props` hash within the component
+    React.render(<Graph title={Keep calm and build a dashboard}/>, app);
+}
+
+main();
+```
+
+Now that we defined in plain javascript the web page, it's time for our tools to
+take over and actually build it.
+
+
+## Build workflow
+
+This is mostly a matter of configuration. First, create the following structure.
+
+```sh
+$ tree
+.
+├── app
+│   ├── components
+│   │   ├── Graph.jsx
+│   ├── main.jsx
+├── build
+└── package.json
+```
+
+Where `package.json` is defined like below.
+
+```json
+{
+  "name": "react-dashboard",
+  "scripts": {
+    "build": "TARGET=build webpack",
+    "dev": "TARGET=dev webpack-dev-server --host 0.0.0.0 --devtool eval-source --progress --colors --hot --inline --history-api-fallback"
+  },
+  "devDependencies": {
+    "babel-core": "^5.6.18",
+    "babel-loader": "^5.3.2",
+    "css-loader": "^0.15.1",
+    "html-webpack-plugin": "^1.5.2",
+    "node-libs-browser": "^0.5.2",
+    "react-hot-loader": "^1.2.7",
+    "style-loader": "^0.12.3",
+    "webpack": "^1.10.1",
+    "webpack-dev-server": "^1.10.1",
+    "webpack-merge": "^0.1.2"
+  },
+  "dependencies": {
+    "metrics-graphics": "^2.6.0",
+    "react": "^0.13.3"
+  }
+}
+```
+
+A quick `npm install` will download every package we need for development and
+production. Two scripts are even defined to build  a static version of the site,
+or serve a dynamic one that will be updated on file changes detection. This
+formidable feature becomes essential once tasted. But we have yet to configure
+Webpack to enjoy it.
+
+```js
+var path = require('path');
+var HtmlWebpackPlugin = require('html-webpack-plugin');
+var webpack = require('webpack');
+var merge = require('webpack-merge');
+
+// discern development server from static build
+var TARGET = process.env.TARGET;
+// webpack prefers abolute path
+var ROOT_PATH = path.resolve(__dirname);
+
+// common environments configuration
+var common = {
+  // input main.js we wrote earlier
+  entry: [path.resolve(ROOT_PATH, 'app/main')],
+  // import requirements with following extensions
+  resolve: {
+    extensions: ['', '.js', '.jsx']
+  },
+  // define the single bundle file output by the build
+  output: {
+    path: path.resolve(ROOT_PATH, 'build'),
+    filename: 'bundle.js'
+  },
+  module: {
+    // also support css loading from main.js
+    loaders: [
+      {
+        test: /\.css$/,
+        loaders: ['style', 'css']
+      }
+    ]
+  },
+  plugins: [
+    // automatically generate a standard index.html to attach on the React app
+    new HtmlWebpackPlugin({
+      title: 'React Dashboard'
+    })
+  ]
+};
+
+// production specific configuration
+if(TARGET === 'build') {
+  module.exports = merge(common, {
+    module: {
+      // compile es6 jsx to standard es5
+      loaders: [
+        {
+          test: /\.jsx?$/,
+          loader: 'babel?stage=1',
+          include: path.resolve(ROOT_PATH, 'app')
+        }
+      ]
+    },
+    // optimize output size
+    plugins: [
+      new webpack.DefinePlugin({
+        'process.env': {
+          // This has effect on the react lib size
+          'NODE_ENV': JSON.stringify('production')
+        }
+      }),
+      new webpack.optimize.UglifyJsPlugin({
+        compress: {
+          warnings: false
+        }
+      })
+    ]
+  });
+}
+
+// development specific configuration
+if(TARGET === 'dev') {
+  module.exports = merge(common, {
+    module: {
+      // also transpile javascript, but also use react-hot-loader, to automagically update web page on changes
+      loaders: [
+        {
+          test: /\.jsx?$/,
+          loaders: ['react-hot', 'babel?stage=1'],
+          include: path.resolve(ROOT_PATH, 'app'),
+        },
+      ],
+    },
+  });
+}
+```
+
+Webpack configuration can be hard to swallow at first but, given the huge amount
+of transformations to operate, this style scales very well. Plus, once setup,
+the development environment becomes remarkably productive. To convince yourself,
+run [webpack-dev-server][23] and reach `localhost:8080/assets/bundle.js` in your
+browser. Tweak the `title` argument in `main.jsx`, save the file and watch the
+browser update itself. We are ready to build new components and extend our
+modular dashboard.
+
+
+## Conclusion
+
+We condensed in a few paragraphs a lot of what makes the current web ecosystem
+effervescent. I strongly encourage the reader to deepen its knowledge on those
+matters and consider this post as it is : an introduction.
+
+Web components, like micro-services, are fun, powerful and bleeding edges. But
+also complex, fast-moving and unstable. The tooling, especially, is impressive.
+Spend a hard time to master them and craft something cool !
+
+
+[1]: https://facebook.github.io/react/
+[2]: http://webcomponents.org/
+[3]: https://www.polymer-project.org/1.0/
+[4]: https://en.wikipedia.org/wiki/Minimum_viable_product
+[5]: https://influxdb.com/
+[6]: http://grafana.org/
+[7]: https://github.com/lukehoban/es6features/blob/master/README.md
+[8]: https://babeljs.io/
+[9]: http://nerds.airbnb.com/isomorphic-javascript-future-web-apps/
+[10]: https://facebook.github.io/flux/docs/overview.html
+[11]: http://gaearon.github.io/react-hot-loader/
+[12]: http://webpack.github.io/docs/what-is-webpack.html
+[13]: https://github.com/kriasoft/react-starter-kit
+[14]: https://nodejs.org/
+[15]: https://www.npmjs.com/
+[16]: http://webpack.github.io/docs/
+[17]: http://gulpjs.com/
+[18]: http://blog.npmjs.org/post/101775448305/npm-and-front-end-packaging
+[19]: https://facebook.github.io/react/docs/jsx-in-depth.html
+[20]: http://metricsgraphicsjs.org/
+[21]: http://borisyankov.github.io/react-sparklines/
+[22]: https://github.com/mozilla/metrics-graphics/blob/master/examples/data/confidence_band.json
+[23]: http://webpack.github.io/docs/webpack-dev-server.html
+[24]: https://github.com/lukehoban/es6features

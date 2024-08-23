@@ -1,0 +1,248 @@
+[Product Hunt][1] addicts like me might have noticed how often a "developer" tab
+was available on landing pages. More and more modern products offer a special
+entry point tailored for coders who want deeper interaction, beyond standard
+end-user experience. [Twitter][2], [Myo][3], [Estimote][4] are great examples of
+technologies an engineer could leverage for its own tool/product.
+
+And [Application Programming Interfaces][5] (API) make it possible. Companies
+design them as a communication contract between the developer and their product.
+We can discern [Representational State Transfer][7] APIs (RESTful) from
+programmatic ones. The latter usually offer deeper technical integration, while
+the former tries to abstract most of the product's complexity behind intuitive
+remote resources (more on that later).
+
+The resulting simplicity owes a lot to the [HTTP protocol][6] and turns out to
+be trickier than one think. Both RESTful servers and clients often
+underestimates the value of HTTP historical rules or the challenges behind
+network failures.
+
+I will dump in this article my last experience in building an HTTP+JSON API
+client. We are going to build a small framework in python to interact with
+well-designed third party services. One should get out of it a consistent
+starting point for new projects, like [remotely controlling its car][8] !
+
+
+## Stack and Context
+
+Before diving in, let's state an important assumption : APIs our client will
+call are [__well designed__][15]. They enforce RFC standards, conventions and
+consistent resources. Sometimes, however, real world throws at us ugly
+interfaces. Always read the documentation (if any) and deal with it.
+
+The choice of Python should be seen as a minor implementation consideration.
+Nevertheless, it will bring us the powerful [requests package][9] and a nice
+[repl][10] to manually explore remote services. Its popularity also suggests we
+are likely to be able to integrate our future package in a future project.
+
+To keep things practical, requests will hit [Consul][14] [HTTP endpoints][11],
+providing us with a handy interface for our infrastructure.
+
+> Consul, as a whole, it is a tool for discovering and configuring services in
+> your infrastructure.
+
+ Just [download the appropriate binary][12], move it in your `$PATH` and start a
+ new server :
+
+```sh
+consul agent \
+  -server \
+  -bootstrap-expect 1 \
+  -data-dir /tmp/consul \
+  -node consul-server
+```
+
+We also need `python 3.4 or 2.7`, [pip][13] installed and, then, to download the
+single dependency we mentioned earlier with `pip install requests==2.7.0`.
+
+Now let's have a conversation with an API !
+
+
+## Sending requests
+
+APIs exposes resources for manipulation through [HTTP verbs][16]. Say we need to
+retrieve nodes in our cluster, [Consul documentation][17] requires us to perform
+a `GET /v1/catalog/nodes`.
+
+```py
+import requests
+
+def http_get(resource, payload=None):
+	""" Perform an HTTP GET request against the given endpoint. """
+	# Avoid dangerous default function argument `{}`
+    payload = payload or {}
+    # versioning an API guarantees compatibility
+	endpoint = '{}/{}/{}'.format('localhost:8500', 'v1', resource)
+	return requests.get(
+		endpoint,
+		# attach parameters to the url, like `&foo=bar`
+		params=payload,
+		# tell the API we expect to parse JSON responses
+		headers={'Accept': 'application/vnd.consul+json; version=1'})
+```
+
+Providing consul is running on the same host, we get the following result.
+
+```py
+In [4]: res = http_get('catalog/nodes')
+
+In [5]: res.json()
+Out[5]: [{'Address': '172.17.0.1', 'Node': 'consul-server'}]
+```
+
+Awesome : a few lines of code gave us a really convenient access to Consul
+information. Let's leverage [OOP][18] to abstract further the `nodes` resource.
+
+
+## Mapping resources
+
+The idea is to consider a `Catalog` class whose attributes are Consul API
+resources. A little bit of Python magic offers an elegant way to achieve that.
+
+```py
+class Catalog(object):
+
+	# url specific path
+	_path = 'catalog'
+
+	def __getattr__(self, name):
+		""" Extend built-in method to add support for attributes related to endpoints.
+        Example: agent.members runs GET /v1/agent/members
+        """
+        # Default behavior
+        if name in self.__dict__:
+            return self.__dict__[name]
+        # Dynamic attribute based on the property name
+        else:
+            return http_get('/'.join([self._path, name]))
+```
+
+It might seem a little cryptic if you are not familiar with built-in Python's
+object methods but the usage is crystal clear :
+
+```py
+In [47]: catalog_ = Catalog()
+
+In [48]: catalog_.nodes.json()
+Out[48]: [{'Address': '172.17.0.1', 'Node': 'consul-server'}]
+```
+
+The really nice benefit with this approach is that we become very productive in
+supporting new resources. Just rename the previous class `ClientFactory` and
+profit.
+
+```py
+class Status(ClientFactory):
+	_path = 'status'
+
+In [58]: status_ = Status()
+
+In [59]: status_.peers.json()
+Out[59]: ['172.17.0.1:8300']
+```
+
+But... what if the resource we call does not exist ? And, although we provide an
+header with `Accept: application/json`, what if we actually don't get back a
+`JSON` object or reach our rate limit ?
+
+
+## Reading responses
+
+Let's challenge our current implementation against those questions.
+
+```py
+In [61]: status_.not_there
+Out[61]: <Response [404]>
+
+In [68]: # ok, that's a consistent response
+In [69]: # 404 HTTP code means the resource wasn't found on server-side
+
+In [69]: status_.not_there.json()
+---------------------------------------------------------------------------
+StopIteration                             Traceback (most recent call last)
+...
+ValueError: Expecting value: line 1 column 1 (char 0)
+```
+
+Well that's not safe at all. We're going to wrap our HTTP calls with a decorator
+in charge of inspecting the API response.
+
+```py
+def safe_request(fct):
+	""" Return Go-like data (i.e. actual response and possible error) instead of raising errors. """
+    def inner(*args, **kwargs):
+	    data, error = {}; one
+	    try:
+		    res = fct(*args, **kwargs)
+        except requests.exceptions.ConnectionError as error:
+            return None, {'message': str(error), 'id': -1}
+
+		if res.status_code == 200 and res.headers['content-type'] == 'application/json':
+			# expected behavior
+			data = res.json()
+		elif res.status_code == 206 and res.headers['content-type'] == 'application/json':
+			# partial response, return as-is
+			data = res.json()
+		else:
+			# something went wrong
+			error = {'id': res.status_code, 'message': res.reason}
+
+		return res, error
+	return inner
+
+# update our old code
+@safe_request
+def http_get(resource):
+	# ...
+```
+
+This implementation stills require us to check for errors instead of disposing
+of the data right away. But we are dealing with network and unexpected failures
+__will__ happen. Being aware of them without crashing or wrapping every
+resources with try/catch is a working compromise.
+
+```py
+In [71]: res, err = status_.not_there
+In [72]: print(err)
+{'id': 404, 'message': 'Not Found'}
+```
+
+
+## Conslusion
+
+We just covered an opinionated python abstraction for programmatically expose
+remote resources. Subclassing the objects above allows one to quickly interact
+with new services, through command line tools or interactive prompt.
+
+Yet, we only worked with the `GET` method. Most of the APIs allow resources
+deletion (`DELETE`), update (`PUT`) or creation (`POST`) to name a few [HTTP
+verbs][16]. Other future work could involve :
+
+- authentification
+- smarter HTTP code handler when dealing with `forbidden`, `rate limiting`,
+  `internal server error` responses
+
+Given the incredible services that emerged lately ([IBM Watson][21],
+[Docker][22], ...), building API clients is a more and more productive option to
+develop innovative projects.
+
+
+[1]: http://www.producthunt.com/
+[2]: https://dev.twitter.com/rest/public
+[3]: https://developer.thalmic.com/docs/api_reference/platform/script-reference.html
+[4]: http://developer.estimote.com/
+[5]: https://en.wikipedia.org/wiki/Application_programming_interface
+[6]: https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol
+[7]: https://en.wikipedia.org/wiki/Representational_state_transfer
+[8]: http://docs.timdorr.apiary.io/#
+[9]: http://docs.python-requests.org/en/latest/
+[10]: http://ipython.org/
+[11]: https://www.consul.io/docs/agent/http.html
+[12]: https://www.consul.io/downloads.html
+[13]: https://pypi.python.org/pypi/pip
+[14]: https://www.consul.io/
+[15]: https://github.com/interagent/http-api-design/blob/master/README.md
+[16]: http://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
+[17]: https://www.consul.io/docs/index.html
+[18]: https://en.wikipedia.org/wiki/Object-oriented_programming
+[21]: https://developer.ibm.com/watson/
+[22]: https://docs.docker.com/reference/api/docker_remote_api/

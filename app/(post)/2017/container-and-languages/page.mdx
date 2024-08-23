@@ -1,0 +1,203 @@
+In march 2013, Solomon Hykes presents [Docker][1], and democratizes access to
+linux containers. The underlying technology, [control groups][2], is already
+incubating for a few years at Google. But Docker abstracts away the complexity
+of containers' lifecycle and adoption skyrockets among developers. In June 2016,
+[Datadog published some compelling statistics about Docker adoption][3]: the
+industry as a whole increasingly adopts containers for production.
+
+Since everybody is talking about how to containarize everything, I would like to
+take a step back and study how it is influencing the development of our most
+fundamental medium : programming languages. Golang rise, Java8 release, Python
+3.6 improvements, … How both languages development and containarisation market
+maturation play together in 2017 ?
+
+
+## Container technologies scope
+
+Let's define the scope of what we call **container technologies**. Way back in
+2006, two Google engineers started to work on a new technology for partition
+hierarchical group of tasks. They called it [cgroups][4] and submitted the code
+to the Linux Kernel. This _lightweight_ approach of *virtualization* ([sorry
+Mike][29]) was an opportunity for infrastructure-heavy companies and Heroku,
+Google, among others, took advantage of it to orchestrate so-called
+**containers**. Put simply, they were now able to think of application
+deployment as the dynamique manipulation of theses determinist runtimes.
+Whatever the code or the business logic, it was encapsulated into a uniforme
+execution format.
+
+**Cgroups** are very low-level though, and tooling around the original
+primitives quickly emerged, like [LXC][5] backed by [Canonical][6]. Then Solomon
+Hykes came in and made the technology widely accessible with [Docker][1].
+Possibilities were endless and indeed developers and startups alike rushed in
+all directions. Lately however the hype seems to cool down. Docker market share
+is being questioned while the company precises [its business strategy][7]. At
+the end of the day, developers start forgetting about vendor/technology and just
+want simple tooling for more efficient coding. [Docker-compose][8], [Red Hat
+Container Development Kit][9], [GC Container Builder][10] or [local
+Kubernetes][11] are very sophisticated pieces of technologies that hide the
+details of the underlying container mechanics. What they give to engineers is
+powerful primitives for advanced development practices : development/production
+environment parity, transparent services replication, predictable runtime
+configuration, ...
+
+But this is not just about development correctness or convenience, considering
+how **containers** are [eating the IaaS landscape][12]. It is also about
+deployment optimizations and resilience. Tech giants who operate crazy large
+infrastructures developed incredible frameworks, often in the open, to push how
+fast they could deploy auto-scalable, self-healing, zero-downtime fleets.
+[Apache Mesos][13] backed by [Microsoft][14], or [Kubernetes][15] by Google,
+make at least two promises:
+
+- Safe and agile deployments at the (micro-)service level
+- Reliable orchestration with elegant service discovery, load-balancing and
+  failure management (because one have to accept that production always go wrong
+  at one point)
+
+`Kubernetes Overview - lost`
+
+Containers enabled us to manage complexity with infrastructure design patterns
+like **micro-services** or **serverless**. Behind the hype of these buzzwords,
+engineers try to improve team collaboration, safe and agile deployments, large
+project maintainance and monitoring. But we quickly came to realize it was sold
+with a _DevOps_ tax. Fortunately the software industry has a hard-won experience
+of such balance and we start to see it converges toward the most robust
+approaches.
+
+This container landscape overview hopefully gave us the requirements to now
+study how it impacted the development of programming languages. We will take a
+look first at their eco-systems, and then we will dive in languages designs
+themselves.
+
+
+
+## Languages Ecosystems and Usages
+
+Most developers are now aware of how invasive container technologies can be. It
+makes its way in your development toolbox or how your company manages its
+servers. Some will argue that the fundamentals of coding did not evolve much but
+the trend is hard to ignore anyway.
+
+`Docker trend over time - lost`
+
+While we are free of course to stay away from Silicon Valley latest fashions, I
+think containers tackle a problem most languages struggle with : dependencies
+and packaging. Go for example got packaging right but is still trying to figure
+out [how to handle dependencies versioning and vendoring][15]. Javascript, on
+the other hand, has npm to manage with fine grained third party codes, but build
+tools are scattered all over Github. Containers won't spare you the pain of
+setting things up (they target runtimes, not build steps), but it can lower the
+bar of **language adoption**. [Official images][16] can run most standard
+language projects and one can both give a try and deploy a basic _hello world_
+in no time. When you realize that Go1.5+ needs Go1.4 to be compiled, it can be a
+relief to just `docker run` your 5-lines-long `main.go`.
+
+Growing a language community is a sure way to develop its tooling, libraries, …
+But containers also proved to be able to influence how we design those
+components. They are kind of the cloud counterparts of the the current
+**functional** trend. We tend to embrace a world where both functions and
+servers are immutable and single-purpose. We want predictable, pure primitives
+(in the mathematical sense). All of that to match increasingly distributed and
+intensive workloads.
+
+I hope those approaches come from products need but obviously having the right
+technology at hand drives the innovation. As software engineers in 2017 we also
+design libraries and tools with containers in mind : [high performance
+networking][17], [distributed process management][18], [Data pipelines][19], and
+so on.
+
+
+
+## Languages design
+
+`Languages Trends over time - lost`
+
+What about languages design themselves ? To get things straight, I don't think
+containers influcences how [Guido Van Rossum][20] designs Python. And that is
+the point of containers. They abstract the runtime to _let you focus on your
+code™_  (it is literally on every Docker-based PaaS landing page). You should be
+able to design whatever logic implementation you need, and containers will come
+handy to help you run it when needed.
+
+I do believe however that both languages last evolutions and the rise of
+containers serve the same maturation of ideas in the tech community.
+
+- **Correctness at compile time** : Both Python 3.6, ELM, and Javascript ES7 are
+  bringing back typing to their language (see [type hints][21] or
+  [Typescripts][22]) / An application running locally will launch just the same
+  in production. You can even [run tests against multiple runtimes without
+  complex scripts or heavy setup][23].
+- **Simplicity** : Go won a lot of its market share [thanks to its initial
+  simplicity][24], taking a lot of decisions for you / Containers try their best
+  to offer one unified way to run code, whatever the stack.
+- **Functional**: Scala, javascript, Elixir, … all enforce immutable states,
+  function compositions with [support for lambda expressions][25], function
+  purity / It echoes the _serverless_ trend that promote **function as a
+  service**. [Most][26] of [the providers][27] leverage some kind of container
+  technology to bring the required agility to their platforms.
+
+There is something elegant having both language features, programmation design
+patterns, and infrastructure operations going hand in hand. While I don't think
+one of them influences the others, I certainely believe that their development
+smooth others' innovations.
+
+
+
+## Conclusion
+
+Container technologies and the fame around are finally starting to converge
+toward fewer and more robust usages. At the same time, infrastructure designs,
+new languages and evolutions of existing ones seem to promote the same
+underlying patterns : simple, functional, decoupled components. I think this
+coincidence comes from industry maturity and openness, more than, as I said, one
+technology influencing the others.
+
+Containers, however, are shaking how we collaborate and design tools for the
+languages we love. It changes the way we on-board developers learning a new
+language. It change how we setup local development environments, with
+micro-replicates of production topology. It changes the way we package and
+deploy code. And most importantly, it enabled architectures like
+**micro-services** or **lambdas** that influence how we design our programs.
+
+I my opinion programming languages design should continue to evolve decoupled
+from containers. They serve different purposes, and given the pace of the tech
+industry, major languages should never depends on [new shining tools][30]. That
+being said, the evolution of languages now comes a lot with the activity of its
+community. What they build, how they use it, how they spread it in companies, …
+Coping with containers is an opportunity to bring new developers, improve
+production robustness, and accelerate both technical and human growth.
+
+
+
+---
+
+
+
+[1]: https://www.docker.com
+[2]: https://en.wikipedia.org/wiki/Cgroups
+[3]: https://www.datadoghq.com/docker-adoption/
+[4]: https://www.kernel.org/doc/Documentation/cgroup-v1/cgroups.txt
+[5]: https://linuxcontainers.org/fr/
+[6]: https://www.canonical.com/
+[7]: https://blog.docker.com/2017/03/docker-enterprise-edition/
+[8]: https://docs.docker.com/compose/overview/
+[9]: https://developers.redhat.com/products/cdk/overview/
+[10]: https://cloud.google.com/container-builder/docs/
+[11]: https://github.com/kubernetes/minikube
+[12]: https://www.datadoghq.com/blog/3-clear-trends-in-ecs-adoption/
+[13]: http://mesos.apache.org/
+[14]: https://azure.microsoft.com/fr-fr/blog/microsoft-joins-the-new-dc-os-open-source-project/
+[15]: https://blog.gopheracademy.com/advent-2016/saga-go-dependency-management/
+[16]: https://docs.docker.com/docker-hub/official_repos/#how-can-i-get-involved
+[17]: http://www.grpc.io/
+[18]: http://pm2.keymetrics.io/docs/usage/docker-pm2-nodejs/
+[19]: http://www.pachyderm.io/
+[20]: https://en.wikipedia.org/wiki/Guido_van_Rossum
+[21]: https://www.python.org/dev/peps/pep-0484/
+[22]: https://www.typescriptlang.org/
+[23]: https://github.com/vadimdemedes/trevor
+[24]: http://www.thedotpost.com/2015/11/rob-pike-simplicity-is-complicated
+[25]: https://docs.oracle.com/javase/tutorial/java/javaOO/lambdaexpressions.html
+[26]: https://hyper.sh/
+[27]: https://azure.microsoft.com/fr-fr/services/functions/
+[29]: https://blog.docker.com/2016/03/containers-are-not-vms/
+[30]: https://circleci.com/blog/its-the-future/

@@ -1,0 +1,259 @@
+We can find a certain comfort while developing an application on our local
+computer. We debug logs in real time. We know the exact location of everything,
+for we probably started it by ourselves.
+
+> Make it work, make it right, make it fast - Kent Beck
+> Optimization is the root of all devil - Donald Knuth
+
+So hey, we hack around until interesting results pop up (ok that's a bit
+exagerated). The point is, when hitting the production server our code will sail
+a much different sea. And a much more hostile one. How to connect to third party
+resources ? How to get a clear picture of what is really happening under the
+hood ?
+
+In this article we will try to answer those questions with existing tools. We
+won't discuss continuous integration or complex orchestration. Instead, we will
+focus on what it takes to wrap a typical program to make it run as a public
+service.
+
+
+## A sample application
+
+Before diving into the real problem, we need some code to throw on remote
+servers. Our sample application below exposes a random key/value store over
+http.
+
+```js
+// app.js
+
+// use redis for data storage
+var Redis      = require('ioredis');
+// and express to expose a RESTFul API
+var express = require('express');
+var app          = express();
+
+// connecting to redis server
+var redis = new Redis({
+  host: process.env.REDIS_HOST || '127.0.0.1',
+  port: process.env.REDIS_PORT || 6379
+});
+
+// store random float at the given path
+app.post('/:key', function (req, res) {
+  var key   = req.params.key
+  var value = Math.random();
+  console.log('storing', value,'at', key)
+  res.json({set: redis.set(key, value)});
+});
+
+// retrieve the value at the given path
+app.get('/:key', function (req, res) {
+  console.log('fetching value at ', req.params.key);
+  redis.get(req.params.key).then(function(err, result) {
+    res.json({
+      result: result || err
+    });
+  })
+});
+
+var server = app.listen(3000, function () {
+  var host = server.address().address;
+  var port = server.address().port;
+  console.log('Example app listening at http://%s:%s', host, port);
+});
+```
+
+And we define the following `package.json` and `Dockerfile`.
+
+```json
+{
+  "name": "sample-app",
+  "version": "0.1.0",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "express": "^4.12.4",
+    "ioredis": "^1.3.6",
+  },
+  "devDependencies": {}
+}
+```
+
+```dockerfile
+# Given a correct package.json, those two lines alone will properly install and
+# run our code
+FROM node:0.12-onbuild
+# application's default port
+EXPOSE 3000
+```
+
+A `Dockerfile` ? Yeah, here is a first step toward cloud computation under
+control. Packing our code and its dependencies into a container will allow us to
+ship and launch the application with a few reproducible commands.
+
+```sh
+# download official redis image
+docker pull redis
+# cd to the root directory of the app and build the container
+docker build -t article/sample .
+# assuming we are logged in to hub.docker.com, upload the resulting image for
+# future deployment
+docker push article/sample
+```
+
+Enough for the preparation, time to actually run the code.
+
+
+## Service Discovery
+
+The server code needs a connection to [redis][9]. We can't hardcode it because
+host and port are likely to change under different deployments. Fortunately [The
+Twelve-Factor App][1] provides us with an elegant solution.
+
+> The twelve-factor app stores config in environment variables (often shortened
+> to env vars or env). Env vars are easy to change between deploys without
+> changing any code;
+
+Indeed, this strategy integrates smoothly with an infrastructure composed of
+containers.
+
+```sh
+docker run --detach --name redis redis
+# 7c5b7ff0b3f95e412fc7bee4677e1c5a22e9077d68ad19c48444d55d5f683f79
+# fetch redis container virtual ip
+export REDIS_HOST=$(docker inspect -f '{{ .NetworkSettings.IPAddress }}' redis)
+# note : we don't specify REDIS_PORT as the redis container listens on the default port (6379)
+docker run -it --rm --name sample --env REDIS_HOST=$REDIS_HOST article/sample
+# > sample-app@0.1.0 start /usr/src/app
+# > node app.js
+# Example app listening at http://:::3000
+```
+
+In another terminal, we can check everything is working as expected.
+
+```sh
+export SAMPLE_HOST=$(docker inspect -f '{{ .NetworkSettings.IPAddress }}' sample))
+curl -X POST $SAMPLE_HOST:3000/test
+# {"set":{"isFulfilled":false,"isRejected":false}}
+curl -X GET $SAMPLE_HOST:3000/test
+# {"result":"0.5807915225159377"}
+```
+
+We didn't precise any network informations but even so, containers can
+communicate. This method is widely used and projects like [etcd][2] or
+[consul][3] let us automate the whole process.
+
+
+## Monitoring
+
+Performances can be a critical consideration for end-user experience or
+infrastructure costs. We should be able to identify bottlenecks or abnormal
+activities and once again, we will take advantage of containers and open-source
+projects. Without modifying the running server, let's launch three new
+components to build a generic monitoring infrastructure.
+
+- __[Influxdb][4]__ is a fast time series database where we will store
+  containers metrics. Since we properly defined the application into two
+  single-purpose containers, it will give us an interesting overview of what's
+  going on.
+
+```sh
+# default parameters
+export INFLUXDB_PORT=8086
+export INFLUXDB_USER=root
+export INFLUXDB_PASS=root
+export INFLUXDB_NAME=cadvisor
+
+# Start database backend
+docker run --detach --name influxdb \
+  --publish 8083:8083 --publish $INFLUXDB_PORT:8086 \
+  --expose 8090 --expose 8099 \
+  --env PRE_CREATE_DB=$INFLUXDB_NAME \
+  tutum/influxdb
+
+export INFLUXDB_HOST=$(docker inspect -f '{{ .NetworkSettings.IPAddress }}' influxdb)
+```
+
+- __[cadvisor][5]__ _Analyzes resource usage and performance characteristics of
+  running containers_. The command flags will instruct it how to use the
+  database above to store metrics.
+
+```sh
+docker run --detach --name cadvisor \
+  --volume=/var/run:/var/run:rw \
+  --volume=/sys:/sys:ro \
+  --volume=/var/lib/docker/:/var/lib/docker:ro \
+  --publish=8080:8080 \
+  google/cadvisor:latest \
+      --storage_driver=influxdb \
+      --storage_driver_user=$INFLUXDB_USER \
+      --storage_driver_password=$INFLUXDB_PASS \
+      --storage_driver_host=$INFLUXDB_HOST:$INFLUXDB_PORT \
+      --log_dir=/
+
+# A live dashboard is available at $CADVISOR_HOST:8080/containers
+
+# We can also point the brower to $INFLUXDB_HOST:8083, with credentials above,
+# to inspect containers data.
+# Query example:
+#     > list series
+#     > select time,memory_usage from stats where container_name='cadvisor' limit 1000
+# More infos: https://github.com/google/cadvisor/blob/master/storage/influxdb/influxdb.go
+```
+
+- __[Grafana][5]__ is a _feature rich metrics dashboard and graph editor for
+  Graphite, InfluxDB and OpenTSB_. From its web interface, we will query the
+  database and graph the metrics cadvisor collected and stored.
+
+```sh
+docker run --detach --name grafana \
+    -p 8000:80 \
+    -e INFLUXDB_HOST=$INFLUXDB_HOST \
+    -e INFLUXDB_PORT=$INFLUXDB_PORT \
+    -e INFLUXDB_NAME=$INFLUXDB_NAME \
+    -e INFLUXDB_USER=$INFLUXDB_USER \
+    -e INFLUXDB_PASS=$INFLUXDB_PASS \
+    -e INFLUXDB_IS_GRAFANADB=true \
+    tutum/grafana
+
+# Get login infos generated
+docker logs grafana
+```
+
+Now we can head to `localhost:8000` and build a custom dashboard to monitor the
+server. I won't repeat [the comprehensive documentation][7] but here is a query
+example:
+
+```
+# note: cadvisor stores metrics in series named 'stats'
+select difference(cpu_cumulative_usage) where container_name='cadvisor' group by time 60s
+```
+
+Grafana's autocompletion feature shows us what we can track : cpu, memory and
+network usage among other metrics. We all love screenshots and dashboards so
+here is a final reward for our hard work.
+
+`img Metrics Dashboard lost`
+
+
+## Conclusion
+
+Development best practices and a good understanding of powerful tools gave us a rigorous workflow to launch applications with confidence. To sum up:
+
+- Containers bundle code and requirements for flexible deployment and execution isolation.
+- Environment stores third party services informations, giving developers a predictable and robust solution to read them.
+- InfluxDB + Cadvisor + Grafana feature a complete monitoring solution independently of the project implementation.
+
+We fullfilled our expections but there's room for improvements. As mentionned service discovery could be automated, but we also omitted how to manage logs. There are [many discussions][8] around this complex subject and we can expect shortly new improvements in our toolbox.
+
+
+[1]: http://12factor.net/config
+[2]: https://github.com/coreos/etcd
+[3]: https://www.consul.io/
+[4]: http://influxdb.com/
+[5]: https://github.com/google/cadvisor
+[6]: http://grafana.org/
+[7]: http://docs.grafana.org/datasources/influxdb/
+[8]: https://github.com/docker/docker/issues/7195
+[9]: http://redis.io/

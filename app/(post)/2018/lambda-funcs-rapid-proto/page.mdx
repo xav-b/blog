@@ -1,0 +1,252 @@
+> **Abstract**: Their “serverless” nature truely fullfill the cloud promises of
+> having as less as possible to manage to put something into world. This is a
+> new cloud paradigm that lower the barrier of prototyping, experimenting and
+> quickly gather feedback. The idea is to show how 1. How efficient a workflow
+> can be 2. What does it mean for early cloud projects 3. How does it fit along
+> containers
+
+---
+
+It has been a few months already that tech conferences and blogs are agitated by
+the word _"serverless"_. Somewhat a promise that specific services or frameworks
+can free you from thinking about servers and just let you push code out into the
+wild. Of course servers are still there so what is new in the current IaaS
+(Infrastructure as a Service) landscape ? Well this marketing bundles a much
+more interesting idea : _lambda architectures_. A paradigm that splits projects
+into straight functions, made available accross networks. Yes pretty much the
+same concept that let tech teams convince their CTO to move to _microservices_.
+But a step further. With a consistent approach on the architecture itself : one
+feature that just wakes up to serve its purpose, then die instead of waiting
+idle.
+
+I think this is exciting. It makes projects easier to think about and much more
+cost effective. But like micro services you actually fight new challenges :
+service discovery, team education, resilience, multi-languages, multi-cloud. You
+need everything and everyone to be coordinated. Yet, I pretend that lambda
+functions, despite this, are a perfect fit for early projects and
+experimentations - among other things (but that is something I let for other
+engineers with different experiences on those matters). Read on and I hope it
+will give you some tools to choose the stack of your next projects.
+
+
+
+## An effective workflow
+
+Architectures based on lambdas basically deploy one compute unit for one service that performs one thing. Needless to say when you go all-in on this and need to manage hundreds of services with execution steps triggered by each other, you can end up with spaghetti-logic-flows (of clean code, but well…).
+
+![lambdas](/images/old-articles/cloudcraft-lambda.png)
+
+
+I won't go further into the details of this situation but you probably need to
+hire senior architects and read interesting articles on how to manage technical
+debt or why micro services can bite back.
+
+But today we will take a break and talk about fresh projects, tinkering,
+experimentations. This time we want it simple, clear, effective. We want to just
+get done the basics quickly : landing page, user management, payement. Then we
+can add more differentiation features. But we are not sure yet which will make
+the users to pay or love the product.
+
+At the end of the day we try to iteratively and safely build the product by
+defining blocks we can think of in isolation and only when we need it.
+Dedicating lambda functions to those bricks fit this agile process and make for
+a clear Minimum Viable Product roadmap.
+
+What about a sudden idea ? Whatever your existing stack, follow your intuition
+and quickly run a new lambda. Or kill it. Or replace it. Safe experimentations,
+quick iterations.
+
+---
+
+So this is the kind of micro-services like popularized by Docker but mentally
+cheaper ? Yes in some way. Call it nano if you want to distinguish but I believe
+containers or lambdas are a detail of implementaiton to enjoy the same
+arhitectural pattern benefits described above. _Lambdas_ enforce _1 service_ by
+being _1 function_ and have the good idea of dying when they are no longer
+needed. It forces developers to reason on small and stateless processing tasks.
+Code solves one problem with minimal side effects. A great mix of good old UNIX
+philosophy with latest functional trend. I'm biased but it serves developer
+hapiness with strong community consensus isn't it ? And what does it take to be
+as cool as that ?
+
+```js
+module.exports = function(context, callback) {
+    callback(200, "Hello, world!\n");
+}
+```
+
+Most frameworks and SaaS require you to expose a single function with an object
+that can hold secrets, HTTP query attributes. Of course nothing prevent us from
+writing 2000 LoC between `module.exports` and `callback()` but it quickly smells
+like an anti-pattern.
+
+And especially ease of deployment will quickly make it harder to maintain than
+spliting our problems into manageable endpoint solutions.
+
+```sh
+$ # completely copy/pasted from http://fission.io/
+
+$ fission function create --name hello --env nodejs --code hello.js
+$ fission route add --function hello --url /hello
+$ curl http://router.fission/hello
+Hello, world!
+```
+
+and _Bam_ you have some code that will greet you over HTTP thanks to
+[Fission](http://fission.io/). It requires you to have a
+[Kubernets](https://kubernetes.io/) setup at hand but well, in 2017, who doesn't
+have a self-hosted _"open-source system for automating deployment, scaling, and
+management of containerized applications"_. But really if you don't have time or
+don't enjoy administrating distributed clusters like you should, you are still
+in good company. Big hosting players now offer competitive platforms to push
+lambda on. [Webtask 101](https://webtask.io/docs/101) can indeed get you setup
+in 30 seconds, without paying a penny.
+
+```sh
+$ # again, shamefully copy/pasted from https://webtask.io/docs/101
+$ echo "module.exports = function(cb) { cb(null, 'hello world'); }" > foo.js
+$ wt create foo.js
+```
+
+When you experienced how to kickstart a project like say
+[React](https://reactjs.org/) and [Webpack](https://webpack.js.org/), this is
+amazingly painless. Yet full featured :
+
+```Bash
+$ wt cron schedule \
+  -n mongocron \
+  -s MONGO_URL=mongodb://webtask:supersecret@ds047592.mongolab.com:47592/webtask-examples \
+  10m \
+  foo.js
+
+```
+
+And the lambda function now runs periodically, a really frequent use case as you
+probably know.
+
+On all aspects the barrier of entry is very low. We write code like we are used
+to : functions. No new _Domain Specific Language_, no complex configuration. Or
+they were quickly wrapped behind poplar frameworks like
+[Serverless](https://serverless.com/) does for various cloud providers. And it
+matters because new paradigms that don't force you to re-learn everything and
+yet are immediately actionnable for our projects are usually getting a lot of
+tractions. And a lot of tractions means a good eco-system of services,
+libraries, help, articles. Which itself feeds the movement and so on.
+
+Those frameworks and services are especially important for _Serverless_ because
+the whole point is to save you the hassle from managing stuff unrelated to your
+core project. But it uses non-trivial technologies and manage complex
+infrastructures of ephemeral compute instances dynamically mapped onto gateways
+to route traffic.
+
+Self-hosted alternatives like `IBM OpenWhisk` brings in-house huge control over
+your _serverless_ stack, without too fancy technologies (proxies, containers).
+So may be you have the **devops** team and the investissement ready to make that
+happen. No more third-party reliance, full customization allowed for very
+specific business cases (or shortcut solutions). But servers are back so be
+aware of the challenges (provisioning, configuration, maintenance, monitoring,
+performances, security).
+
+In the meantime let us focus on how we can leverage existing tools for fun and
+profit.
+
+
+## Early cloud projects
+
+![architecture](/images/old-articles/lambdas-figure-1.png)
+
+We saw that code was fast to write, deployments were cheap. Idea to online is as
+frictionless as it can be and this is a double edged result. Much like twitter
+you can end up just putting poor vanity idea in the cloud in no time or you can
+live by the [Lean Startup](http://theleanstartup.com/) and use it to iterate
+fast. Whatever the quality of your initial thoughts, make it public or share it
+privately to gather feedback and experience. It can be a good proxy to assess if
+your initial design or tech is simply relevant. Or build a landing page and
+gauge interest. Either you will be able to focus on the graal, something people
+want, or you will be fast to realise it doesn't worth to put more time in it.
+Engineers usually don't like to cut an arm and give up on something they really
+wanted to build (except for doing it again from scratch or switch to another
+fancy tech). I can't help you fighting this syndrome but at least we can have
+the right numbers to decide.
+
+Our leitmotiv is to go fast and we can insist a little more : Lambdas can be
+used to be DRY at the architecture level. I feel this argument is a bit weaker
+than the other because like many good practices in computer science, it is only
+as good as the author implemented it. Yet, _Serverless_ workflow promotes
+decouple services with a single purpose, hence you can probably share some of
+them, like payement processing, static site rendering, user registration and so
+on. I definitely did and as you develop projects you will start to extract
+patterns and share more an more services to go faster at the prototyping level.
+I do believe though that it will probably break as project grow. From experience
+we tend to specialise bricks to a point where it solves really specific edge
+cases too. Keeping things as simple as possible, implementing only features we
+really need, following the [open/closed
+principle](https://en.wikipedia.org/wiki/Open/closed_principle) are no silver
+bullets but it can go a long way.
+
+But let's add some open-source and community ingredients here to our thinking.
+Since we are talking about decoupled service with clear boundaries, sharing code
+can extend further than our own stack. [Stdlib](https://stdlib.com/) raised
+recently 2 millions for offering a _common library of functions_ accessible
+through the network. Everything seems to point in this direction but i'm not
+sure we are here yet. Maybe there is a lot to solve in trusting third-party
+codes, in-house development trade-offs or adoption rate but I didn't meet a lot
+of projects that leverage this opportunity. Yet, as a small idea, this is
+something we can actually do to, once again, to go faster. Every services that
+are common to early SaaS for example but don't represent a competitive edge
+could be just plug so that we focus on this so-called competitive seed.
+
+Although we listed some limitations of this approach, it is worth noting this is
+something achievable inside an organisation too to empower development teams.
+
+## Tech landscape
+
+So far I fired most of the arguments I had in favour of using lambda
+technologies for small prototypes. I hope it resonates with your experience or
+may be push you to try it for your next move. But may be you caught many points
+or keywords shared by microservices and containers articles. So I want to clear
+confusions and situate where _lambdas_ fit on the current _devops_ landscape (a
+small part of it to be fair).
+
+First, none of those terms are mutually exclusives : you can design a
+microservices architecture using lambdas that run code inside containers. This
+is no accident _serverless_ is coming few years after Docker and containers
+popularity. They unlocked powerful cloud orchestration and the agility _lambdas_
+need to fire on events and die right after processing it.
+
+From my point of view it comes down to developers usage and business goals.
+Nothing will prevent us from putting [elefants in
+containers](https://hub.docker.com/r/spotify/kafka/) or deploying microservices
+on bare-metal machines. Those are tools you can leverage and combine depending
+of your constraints. [Kubernetes](https://kubernetes.io/) for example markets
+itself as a _"Production grade container orchestration"_ but tweak some bolts
+and you get a [_"serverless framework_"](http://kubeless.io/). So :
+
+- _Microservices_ is an architectural pattern that promote decoupled services
+  with clear, small boundaries and interfaces.
+- _Containers_ are a _linux_ feature that allow lighter isolation of processes
+  than VMs thanks to [cgroups](https://en.wikipedia.org/wiki/Cgroups).
+- _Lambdas_ are ephemeral _functions_ that wake up on events, process it and die
+  after that.
+
+
+
+## Conclusion
+
+The startup where I work organized its first hackathon last week. We built many
+projects in 24 hours and many of us ended up deploying _lambdas functions_.
+Because it was fast. Because it was cheap (free actually). Because we could
+split the work between team of three or four. The scope was clearly defined and
+it was a perfect fit for event based projects (like developing slack bots). Some
+of us discovered the framework for the first time and yet they were operational
+in a few minutes, writing, deploying and monitoring _lambda_ code.
+
+All of this quickly breaks when projects grow, like we mentioned. Yet as we
+improve developer tooling I think this paradigm takes us in the right direction:
+lazy execution, effective costs, ease of usage, ease of sharing. We probably
+don't need to migrate all our professional infrastructures under the _lambda_
+hat. We probably need les frameworks and more winners that just work. And we
+definitely need to define how to deploy and maintain hundreds of functions.
+
+So jump aboard. This is already an exciting technology for actionable reasons,
+and we still have a lot more to contribute.

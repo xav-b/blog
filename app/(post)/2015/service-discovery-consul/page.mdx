@@ -1,0 +1,587 @@
+This article is about tooling ourselves to face modern deployment, which often
+involves microservices at scale. Instead of creating a single monolithic
+application, I have split an application into single-purpose units that
+collaborate with one another. I therefore get modular development with a
+separation of concerns and horizontal scaling for free.
+
+Is it really for free? Not quite, actually. While this trendy paradigm promotes
+a nice composition of specific components, we inherit the hassle of
+orchestrating all of those moving parts of the infrastructure.
+
+The wide adoption of Docker, the container engine, highlights such limitations.
+Although Docker has unlocked an exciting workflow to develop, ship, and run
+programs, many developers hit a wall when considering multi-host deployment or
+old-school problems such as log management. Nevertheless, to tackle the gap,
+emerging projects offer reliable primitives, such as Consul, described on
+[GitHub](https://github.com/hashicorp/consul) as "a tool for service discovery,
+monitoring and configuration."
+
+> “My approach is to build a non-intrusive solution to service discovery, which
+> will give us an essential tool for DevOps and will be immediately actionable
+> without locking us behind frameworks.”
+
+I hope this article will help you gain a better understanding of the challenges
+that come with ultra-agile cloud deployment.
+
+Context and goals
+-----------------
+
+First, let me introduce the pain point I want to solve. A typical web
+application today involves a front end of varying complexity, a back end, and a
+database, and it probably makes use of third-party services as well. All of
+these technologies communicate over the network, and we can take advantage of
+that fact: the back end is deployed where resources are available, and a
+database shard spins up nodes for performance considerations. Meanwhile, the
+whole setup dynamically evolves across the cluster to handle the load.
+
+Now, how can the back end find the database URL in this changing cloud topology?
+We need to design a process that exposes to applications an up-to-date knowledge
+of the infrastructure.
+
+Introducing Consul
+------------------
+
+Consul is one of the open-source projects developed by HashiCorp, the creator of
+Vagrant. It offers a distributed, highly available system to register services,
+store shared configuration, and keep an accurate view of multiple data centers.
+Finally, it is distributed as a simple Go binary, which makes it trivial to
+deploy.
+
+To make the steps easy to follow (and consistent with our topic), we are going
+to use Docker. Installation for major platforms has been made as easy as
+possible and you can find step-by-step instructions on [the official
+website](https://docs.docker.com/). Once done, and thanks to progrium (aka [Jeff
+Lindsay](http://progrium.com/blog/2014/08/20/consul-service-discovery-with-docker/)),
+the one-liner in Listing 1 is enough to bootstrap a Consul server.
+
+```sh
+docker run --detach --name consul --hostname consul-server-1 progrium/consul
+-server -bootstrap -ui-dir /ui
+
+# Get  container ip for further interactions
+CONSUL_IP=$(docker inspect -f '{{ .NetworkSettings.IPAddress }}' consul)
+
+# The container also runs a web UI at $CONSUL_IP:8500/ui
+```
+
+_Note:_ While the official documentation recommends that you spin up at least
+three servers to handle failure cases, those considerations are beyond the scope
+of this article.
+
+We are already able to query our infrastructure and discover one service: Consul
+itself (see Listing 2).
+
+```sh
+curl $CONSUL_IP:8500/v1/catalog/services
+{"consul": []}
+
+# we can fetch more details about a specific service
+curl $CONSUL_IP:8500/v1/catalog/service/consul
+[{"Node":"consul-server-1","Address":"172.17.0.1","ServiceID":"consul",
+"ServiceName":"consul","ServiceTags":[],"ServiceAddress":"",
+"ServicePort":8300}]
+```
+
+As you can see, Consul stores important facts about services. It covers
+information and tags, the fundamental data for programmatically accessing remote
+services.
+
+Declarative services
+--------------------
+
+Let's take a look at the role that registration, external services, and Docker
+play with our solution. To illustrate, let's imagine a modern application
+requiering to store data in [MongoDB](https://www.mongodb.org/), and send emails
+through [Mailgun](https://www.mailgun.com/). The latter is an external service,
+while we will run the former by ourselves. Read on to see how we can handle both
+cases.
+
+### Registration
+
+In order to expose those valuable properties, we first need to register the
+service . We will run a Consul agent on each node of our cluster, which is
+responsible for joining a Consul server, exposing the node's service, and
+performing a health check (see Listing 3).
+
+```sh
+# download and install the latest version
+wget https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip -O
+/tmp/consul.zip
+cd /usr/local/bin && unzip /tmp/consul.zip
+
+# create state and configuration directories
+mkdir -p {/srv/consul,/etc/consul.d}
+
+# check everything worked
+consul --help
+```
+
+With 10M+ downloads, MongoDB is a popular choice as a document database. Let's
+use it and save the following file in /etc/consul.d/mongo.json (see Listing 4).
+
+```json
+{
+    "service": {
+        "name": "mongo",
+        "tags": [
+            "database",
+            "nosql"
+        ],
+         "port": 27017,
+         "check": {
+             "name": "status",
+             "script": "mongo --eval 'printjson(rs.status())'",
+             "interval": "30s"
+         }
+     }
+}
+```
+
+The syntax offers a concise, readable, and declarative way of defining service
+properties and our health check. You can pick up those files in a version
+control system and immediately identify an application's components. The file
+above declares a service named "mongo" on port 27017. The check section provides
+the Consul agent a script to test whether the node is healthy or not. Indeed,
+when requesting the server for service requirements, we need to be sure it
+returns reliable endpoints.
+
+All that remains is starting the actual Mongo server and the local Consul agent (see Listing 5).
+
+```sh
+# launch mongodb server on default port 27017
+mongod
+
+# launch local agent
+consul agent \\
+    -join $CONSUL_HOST \\  # explicitly provide how to reach the server
+    -data-dir /data/consul \\  # internal state storage
+    -config-dir /etc/consul.d  # configuration directory where services and checks
+    are expected to be defined
+```
+
+Did it work? Let's query the Consul HTTP API (see Listing 6).
+
+```sh
+# fetch infrastructure overview
+curl $CONSUL_IP:8500/v1/catalog/nodes
+[{"Node":"consul-server-1","Address":"172.17.0.1"},{"Node":"mongo-1","Address"
+:"172.17.0.2"}]
+
+# consul correctly registered mongo service
+curl $CONSUL_IP:8500/v1/catalog/service/mongo
+[{
+    "Node": "mongo-1",
+    "Address": "172.17.0.2",
+    "ServiceID": "mongo",
+    "ServiceName": "mongo",
+    "ServiceTags": ["database", "no-sql"],
+    "ServiceAddress": "",
+    "ServicePort": 27017
+}]
+
+# it also exposes health state
+curl $CONSUL_IP:8500/v1/health/service/mongo
+[{
+    "Node": {
+        "Node":"mongo-1",
+    },
+    "Service": {
+        "ID": "mongo",
+        "Service": "mongo",
+        "Tags": ["database","no-sql"],
+        "Address": "",
+    },
+    "Checks":[{
+        "Node": "mongo-1",
+        "CheckID": "service:mongo",
+        "Name": "Service 'mongo' check",
+        "Status": "passing",
+        "Notes": "",
+        "Output": "MongoDB shell version: 3.0.3\\nconnecting to: test\\n{ \\"ok\\" : 0,
+    \\"errmsg\\" : \\"not running with --replSet\\", \\"code\\" : 76 }\\n",
+        "ServiceID": "mongo",
+        "ServiceName": "mongo"
+    },{
+        "Node": "mongo-1",
+        "CheckID": "serfHealth",
+        "Status": "passing",
+        "Notes": "",
+        "Output": "Agent alive and reachable",
+        "ServiceID": "",
+        "ServiceName": ""
+    }]
+}]
+```
+
+Given a Consul agent or server address, any piece of code in the cluster capable
+of HTTP requests is now able to consume that information. Shortly, I will
+explain how to process it all, but before that, let's cover how to register
+services that are out of our control, and, as a bonus point, how to automate the
+steps above with Docker.
+
+### External services
+
+Usually, developers should avoid adopting a "not invented here" attitude and
+going on to reinvent the wheel. That's the reason we are willing to integrate
+third-party services in our application. But in our case, it means we can't
+start a Consul agent on the appropriate node. Once again, however, Consul has us
+covered (see Listing 7).
+
+```sh
+# manually register mailgun service through the HTTP API
+curl -X PUT -d \\
+    '{"Datacenter": "dc1", "Node": "mailgun", "Address": "http://www.mailgun.com",
+ "Service": {"Service": "email", "Port": 80}, "Check": {"Name": "mailgun api",
+ "http": "www.status.mailgun.com", "interval": "360s", "timeout": "1s"}}' \\
+    http://$CONSUL_IP:8500/v1/catalog/register
+
+# looks like we're all good !
+curl $CONSUL_IP:8500/v1/catalog/services
+{"consul":[],"email":[],"mongo":["database","nosql"]}
+```
+
+Since Mailgun is a web service, we use the HTTP field to check API availability.
+To dive deeper into Consul superpowers, you can refer to its comprehensive
+documentation (see [Resources](#resources) below).
+
+### Docker integration
+
+So far, a Go binary, a single JSON file, and a few HTTP requests have given us a
+service discovery workflow. We are not tied to a particular technology, but as
+mentioned earlier, this agile setup is especially suitable for microservices.
+
+In this context, Docker lets us package services into a reproducible,
+self-registering container. Given our existing mongo.json, all it takes is the
+Dockerfile and Procfile in Listing 8.
+
+```dockerfile
+# Dockerfile
+# start from official mongo image
+FROM mongo:3.0
+
+RUN apt-get update && apt-get install -y unzip
+
+# install consul agent
+ADD https://dl.bintray.com/mitchellh/consul/0.5.2_linux_amd64.zip /tmp/consul.zip
+RUN cd /bin && \\
+    unzip /tmp/consul.zip&& \\
+    chmod +x /bin/consul && \\
+    mkdir -p {/data/consul,/etc/consul.d} && \\
+    rm /tmp/consul.zip
+
+# copy service and check definition, as we wrote them earlier
+ADD mongo.json /etc/consul.d/mongo.json
+
+# Install goreman - foreman clone written in Go language
+ADD https://github.com/mattn/goreman/releases/download/v0.0.6
+/goreman_linux_amd64.tar.gz /tmp/goreman.tar.gz
+RUN tar -xvzf /tmp/goreman.tar.gz -C /usr/local/bin --strip-components 1 && \\
+    rm -r  /tmp/goreman\*
+
+# copy startup script
+ADD Procfile /root/Procfile
+
+# launch both mongo server and consul agent
+ENTRYPOINT ["goreman"]
+CMD ["-f", "/root/Procfile", "start"]
+```
+
+Dockerfiles let us define a single command to run when booting up containers.
+However we need now to run both MongoDB and Consul. `Goreman` let us achieve
+just that. It reads a configuration file named `Procfile`, defining multiple
+processes to manage (liefecycle, environment, logs, ...). Such approach in the
+container world is a debate on its own, and other solutions exist. For now, it
+does the job in a simple manner.
+
+Here is the Procfile:
+
+```yaml
+# Procfile
+database: mongod
+consul: consul agent -join $CONSUL_HOST -data-dir /data/consul -config-dir
+/etc/consul.d
+```
+
+And here are the shell commands to build the container:
+
+```sh
+$ ls
+Dockerfile  mongo.json  Procfile
+
+$ docker build -t article/mongo .
+# ...
+
+$ docker run --detach --name docker-mongo \\
+    --hostname docker-mongo-2 \\  # if not explicitly configured, consul agent  set its name to the node hostname
+    --env CONSUL_HOST=$CONSUL_IP article/mongo
+
+$ curl $CONSUL_IP:8500/v1/catalog/nodes
+[
+    {
+        "Node": "consul-server-1",
+        "Address": "172.17.0.1"
+    }, {
+        "Node": "docker-mongo-2",
+        "Address": "172.17.0.3"
+    }, {
+        "Node": "mailgun",
+        "Address": "http://www.mailgun.com"
+    }, {
+        "Node": "mongo-1",
+        "Address": "172.17.0.2"
+    }
+]
+```
+
+Awesome. Having Docker and service discovery working together definitely makes
+us look good!
+
+We can fetch more details by querying `$CONSUL_IP:8500/v1/catalog/service/mongo`
+like in Listing 6, and, especially, find the service port. Consul exposing the
+container IP as the service address, this approach works as long as the
+container exposed the port, even if Docker mapped it to a random value on the
+host. On multi-host topologies, however, you will need to explicitely map the
+container's port to the same on the host. In case it would be a limitation,
+projects like [Weave](http://weave.works/) might be able to help.
+
+To sum up, here's how we can expose services information throughout several data
+centers:
+
+1. Launch at least one Consul server and store its address.
+2. On each node:
+    - Download the Consul binary.
+    - Write service and check definitions in the Consul configuration directory.
+    - Launch the application.
+    - Launch the Consul agent with the address of another agent or server.
+
+
+## Create infrastructure-aware applications
+
+We have built a convenient and non-intrusive workflow to deploy and register new
+services. The next logical step is to export this knowledge to dependent
+applications.
+
+The Twelve-Factor App makes a serious case about storing configurations in the
+environment:
+
+* Maintain strict separation of the configuration from changing code.
+* Avoid having sensitive information checked into repositories.
+* Keep the language and operating system agnostic.
+
+We will write a wrapper capable of querying a Consul endpoint for available
+services, export their connection properties into the environment, and execute
+the given command. Choosing the Go language gives us a potential cross-platform
+binary (like the other tools so far), and access to the official client API (see
+Listing 9).
+
+```go
+package main
+
+import (
+    "strconv"
+    "strings"
+    "flag"
+    "log"
+    "os"
+    "os/exec"
+    "fmt"
+
+    "github.com/hashicorp/consul/api"
+)
+
+// critical quits on errors with a debug message
+func critical(err error) {
+    if err != nil {
+        log.Printf("error: %v", err)
+        os.Exit(1)
+    }
+}
+
+// inject exports properties into runtime environment
+func inject(properties map[string]string) []string {
+    // read current process environment
+    processEnv := os.Environ()
+    // allocate and copy it
+    env := make([]string, len(processEnv), len(properties) + len(processEnv))
+    copy(env, processEnv)
+
+    for k, v := range properties {
+        // format key/value mapping as exec.Command and system style (i.e. KEY=VALUE)
+        env = append(env, fmt.Sprintf("%s=%s", k, v))
+    }
+    return env
+}
+
+// discoverServices queries Consul for services data
+func discoverServices(addr string, healthyOnly bool) map[string]string {
+    servicesEnv := make(map[string]string)
+    // initialize consul api client
+    consulConf := api.DefaultConfig()
+    consulConf.Address = addr
+    client, err := api.NewClient(consulConf)
+    critical(err)
+
+    // retrieve full list of services throughout our infrastructure
+    services, _, err := client.Catalog().Services(&api.QueryOptions{})
+    critical(err)
+    for name, _ := range services {
+        // query healthy services informations
+        servicesData, _, err := client.Health().Service(name, "", healthyOnly,
+&api.QueryOptions{})
+        critical(err)
+        // loop over this category of service
+        for _, entry := range servicesData {
+            // store connection information like environment variables : {"MONGO_HOST":"172.17.0.5"}
+            id := strings.ToUpper(entry.Service.ID)
+            servicesEnv[id + "_HOST"] = entry.Node.Address
+            servicesEnv[id + "_PORT"] = strconv.Itoa(entry.Service.Port)
+        }
+    }
+    return servicesEnv
+}
+
+func main() {
+  flag.Parse()
+  // keep it consistent and read consul service address from environment
+  consulAddress = os.Getenv("CONSUL")
+  command = flag.Args()
+
+  log.Printf("inspecting infrastructure")
+  services := discoverServices(consulAddress, true)
+  env := inject(services)
+
+  log.Printf("running \`%s\`", strings.Join(command, " "))
+  cmd := exec.Command(command[0], command[1:]...)
+  cmd.Stdout = os.Stdout
+  cmd.Stderr = os.Stderr
+  cmd.Env = env
+
+  critical(cmd.Start())
+  critical(cmd.Wait())
+}
+```
+
+The next command compiles this prototype and validates its behavior.
+
+```sh
+# install the single dependency
+go get github.com/hashicorp/consul
+# compile to `wrapper` (depends on your directory name)
+go build ./...
+
+export CONSUL=$CONSUL_IP:8500
+./wrapper env
+```
+
+The last command should print something like `MONGO_PORT=27017`, among other
+variables. Any command should now be able to read services data from its
+environment.
+
+
+### Reconfigure the infrastructure dynamically
+
+A situation we are still likely to face is challenging our current
+implementation. A web app could start like the one above and successfully
+connect to mongodb, and bad things could still happen on database failures or
+migrations. What we want is to dynamically update the application's knowledge
+when the infrastructure is experiencing either normal or unexpected changes.
+
+While designing a robust solution to this problem might require an article on
+its own, we can explore an interesting approach with the project [Consul
+Template](https://github.com/hashicorp/consul-template).
+
+Consul Template queries a Consul instance and updates any number of specified
+templates on the file system. As an added bonus, Consul Template can execute
+arbitrary commands when a template update completes. Therefore, we can use
+Consul Template to monitor services (addresses and health) and automatically
+restart the application whenever a change is detected. Since our wrapper will
+fetch services data, the runtime environment will mirror the correct state of
+the infrastructure (see Listing 11).
+
+**Use Consul Template to monitor services and restart the application**
+
+```sh
+consul-template \
+    -consul "$CONSUL" \
+    -wait 1s  \\  # Avoid re-running multiple times on changes
+    -template "app.ctmpl:/tmp/app.conf:./wrapper env"
+```
+
+Bonus point : we now enjoy all the benefits of a templated configuration file.
+Here is an example adapted from hackathon-starter.
+
+```ctmpl
+// app.ctmpl
+
+// we store third party service information in the environment
+db: 'mongodb://' + process.env.MONGO_HOST + ':' + process.env.MONGO_PORT + '/test',
+
+// or we can leverage consul-template built-in service discovery
+{{ range service "mongo" }}
+      db2: 'mongodb://{{ .Address }}:{{ .Port }}/test',
+{{ end}}
+
+// Use consul-template to fetch informations from consul kv store
+// curl -X PUT "http://$CONSUL/v1/kv/hackathon/mailgun_user" -d "xavier"
+mailgun: {
+    user: '{{ key "hackathon/mailgun_user" }}',
+    password: '{{ key "hackathon/mailgun_password" }}'
+}
+```
+
+This experience requires more thought. In particular it could be tricky to
+restart the application to update its knowledge of services. We could instead
+send it a specific signal to give it a chance to handle gracefully the changes.
+However it requires us to step in into the application's code base, although,
+until now, it didn't need to be aware of anything. Moreover, the rise of
+microservices on fallible cloud providers should encourage us to run stateless,
+failure-resilient apps. I think Martin Fowler makes a good point with its
+article on [Phoenix servers](http://martinfowler.com/bliki/PhoenixServer.html).
+
+Nevertheless, the composition of powerful tools with clear contracts allows us
+to integrate distributed applications into complex infrastructures, without
+limiting ourselves to a particular provider or application stack.
+
+---
+
+## Conclusion
+
+Service discovery, and more broadly services orchestration, is one of the most
+exciting challenges of modern development. Big players, along with the developer
+community, are stepping in and pushing technologies and ideas further.
+
+IBM Bluemix™, for example, addresses this challenge with workload scheduler,
+smart databases, monitoring, cost management, data synchronization, REST API,
+and more. Only a handful of tools can enable developers to focus solely on the
+loosely coupled modules of their application.
+
+Thanks to Consul and Go, we have been able to take a step in this direction and
+build a set of services featuring:
+
+* Self-registration
+* Self-update
+* Stack agnostic
+* Drop-in deployment
+* Container friendliness
+
+Nevertheless, we have covered only the basics of a production deployment. We
+could go further and extend our wrapper with encryption and offer a consistent
+integration to safely expose credentials such as service tokens. Overall,
+contemplating a plug-and-play approach to service discovery frees us to think
+about the other parts of a modern deployment pipeline without many of the usual
+constraints .
+
+## Resources
+
+### Learn
+
+* The [Twelve-Factor App](http://12factor.net/) is a methodology for building software-as-a-service apps.
+* Get started with the [Docker documentation](https://docs.docker.com).
+* Read a blog post by Benjamin Wootton on [Microservices](http://highscalability.com/blog/2014/4/8/microservices-not-a-free-lunch.html).
+
+### Get products and technologies
+
+* [MongoDB](https://www.mongodb.org/) is an open-source document database and the leading NoSQL database.
+* [Consul](https://www.consul.io) is a tool for discovering and configuring services in your infrastructure.
+* [Mailgun](http://www.mailgun.com/) provides powerful APIs that enable you to send, receive, and track email effortlessly.
+* Get [Node.js](https://nodejs.org).
