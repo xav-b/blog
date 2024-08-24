@@ -1,6 +1,13 @@
-export const Callout = ({ emoji = null, text = null, children }) => (
-  <div className="bg-gray-200 dark:bg-[#333] dark:text-gray-300 flex items-start p-3 my-6 text-base">
-    <span className="block w-6 text-center mr-2 scale-[1.2]">{emoji}</span>
-    <span className="block grow">{text ?? children}</span>
+import { Callout, Link } from '@radix-ui/themes'
+import { InfoCircledIcon } from '@radix-ui/react-icons'
+
+export const InfoCallout = ({ text = null, children }) => (
+  <div className="py-6">
+    <Callout.Root variant="surface" className="py-3">
+      <Callout.Icon>
+        <InfoCircledIcon />
+      </Callout.Icon>
+      <Callout.Text>{text ?? children}</Callout.Text>
+    </Callout.Root>
   </div>
-);
+)

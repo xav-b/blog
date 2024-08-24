@@ -1,6 +1,8 @@
 import './globals.css'
+import '@radix-ui/themes/styles.css'
 
 import { Inter } from 'next/font/google'
+import { Theme } from '@radix-ui/themes'
 import { themeEffect } from './theme-effect'
 import { Analytics } from './analytics'
 import { Header } from './header'
@@ -43,13 +45,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
 
       <body className="dark:text-gray-100 max-w-2xl m-auto">
-        <main className="p-6 pt-3 md:pt-6 min-h-screen">
-          <Header />
+        <Theme>
+          <main className="p-6 pt-3 md:pt-6 min-h-screen">
+            <Header />
 
-          {children}
-        </main>
+            {children}
+          </main>
 
-        <Footer />
+          <Footer />
+        </Theme>
         <Analytics />
       </body>
     </html>
