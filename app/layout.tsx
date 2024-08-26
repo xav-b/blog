@@ -54,7 +54,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </main>
 
           <Footer />
-          <ThemePanel />
+          {config.development.themePanel && <ThemePanel />}
         </Theme>
         <Analytics />
       </body>
