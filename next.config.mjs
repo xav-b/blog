@@ -10,8 +10,8 @@ const rehypeOptions = {
 
 const withMDX = createMDX({
   options: {
-    remarkPlugins: [],
-    // remarkPlugins: [remarkGfm],
+    // remarkPlugins: [],
+    remarkPlugins: [remarkGfm],
     rehypePlugins: [[rehypePrettyCode, rehypeOptions]],
   },
 })

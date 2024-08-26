@@ -2,6 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
+/* FIXME: this probably interfers with Radix-ui */
 @layer base {
   :root {
     font-family: 'Inter', sans-serif;
@@ -29,7 +30,14 @@
   }
 }
 
+/* import it after tailwind base */
+@import '@radix-ui/themes/styles.css';
+
 /* TODO: limit this to the styling of articles */
 li::marker {
   color: #d1d5db;
+}
+
+.radix-themes {
+  --default-font-family: var(--font-inter);
 }
