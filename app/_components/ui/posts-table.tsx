@@ -2,65 +2,16 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Suspense } from 'react'
 import useSWR from 'swr'
+import { Post } from '@/app/_lib/get-posts'
 
 type SortSetting = ['date' | 'views', 'desc' | 'asc']
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
-export function Posts({ posts: initialPosts }) {
-  const [sort, setSort] = useState<SortSetting>(['date', 'desc'])
-  const { data: posts } = useSWR('/api/posts', fetcher, {
-    fallbackData: initialPosts,
-    refreshInterval: 5000,
-  })
+const getYear = (date: string) => new Date(date).getFullYear()
 
-  function sortDate() {
-    setSort((sort) => ['date', sort[0] !== 'date' || sort[1] === 'asc' ? 'desc' : 'asc'])
-  }
-
-  function sortViews() {
-    setSort((sort) => [
-      sort[0] === 'views' && sort[1] === 'asc' ? 'date' : 'views',
-      sort[0] !== 'views' ? 'desc' : sort[1] === 'asc' ? 'desc' : 'asc',
-    ])
-  }
-
-  return (
-    <Suspense fallback={null}>
-      <main className="max-w-3xl font-mono m-auto mb-10 text-sm">
-        <header className="text-gray-500 dark:text-gray-600 flex items-center text-xs">
-          <button
-            onClick={sortDate}
-            className={`w-12 h-9 text-left  ${
-              sort[0] === 'date' && sort[1] !== 'desc' ? 'text-gray-700 dark:text-gray-400' : ''
-            }`}
-          >
-            date
-            {sort[0] === 'date' && sort[1] === 'asc' && '↑'}
-          </button>
-          <span className="grow pl-2">title</span>
-          <button
-            onClick={sortViews}
-            className={`
-                  h-9
-                  pl-4
-                  ${sort[0] === 'views' ? 'text-gray-700 dark:text-gray-400' : ''}
-                `}
-          >
-            views
-            {sort[0] === 'views' ? (sort[1] === 'asc' ? '↑' : '↓') : ''}
-          </button>
-        </header>
-
-        <List posts={posts} sort={sort} />
-      </main>
-    </Suspense>
-  )
-}
-
-function List({ posts, sort }) {
+function List({ posts, sort }: { posts: Post[]; sort: SortSetting }) {
   // sort can be ["date", "desc"] or ["views", "desc"] for example
   const sortedPosts = useMemo(() => {
     const [sortKey, sortDirection] = sort
@@ -113,6 +64,53 @@ function List({ posts, sort }) {
   )
 }
 
-function getYear(date: string) {
-  return new Date(date).getFullYear()
+export function Posts({ posts: initialPosts }) {
+  const [sort, setSort] = useState<SortSetting>(['date', 'desc'])
+  const { data: posts } = useSWR('/api/posts', fetcher, {
+    fallbackData: initialPosts,
+    refreshInterval: 5000,
+  }) as { data: Post[] }
+
+  function sortDate() {
+    // if the sorting is using views, use `desc`
+    // otherwise just toggle date sorting direction
+    setSort((sort) => ['date', sort[0] !== 'date' || sort[1] === 'asc' ? 'desc' : 'asc'])
+  }
+
+  function sortViews() {
+    setSort((sort) => [
+      sort[0] === 'views' && sort[1] === 'asc' ? 'date' : 'views',
+      sort[0] !== 'views' ? 'desc' : sort[1] === 'asc' ? 'desc' : 'asc',
+    ])
+  }
+
+  return (
+    <>
+      <header className="text-gray-500 dark:text-gray-600 flex items-center text-xs">
+        <button
+          onClick={sortDate}
+          className={`w-12 h-9 text-left  ${
+            sort[0] === 'date' && sort[1] !== 'desc' ? 'text-gray-700 dark:text-gray-400' : ''
+          }`}
+        >
+          date
+          {sort[0] === 'date' && sort[1] === 'asc' && '↑'}
+        </button>
+        <span className="grow pl-2">title</span>
+        <button
+          onClick={sortViews}
+          className={`
+                  h-9
+                  pl-4
+                  ${sort[0] === 'views' ? 'text-gray-700 dark:text-gray-400' : ''}
+                `}
+        >
+          views
+          {sort[0] === 'views' ? (sort[1] === 'asc' ? '↑' : '↓') : ''}
+        </button>
+      </header>
+
+      <List posts={posts} sort={sort} />
+    </>
+  )
 }

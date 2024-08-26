@@ -1,7 +1,7 @@
 export const runtime = 'edge'
 
-import redis from '@/app/redis'
-import postsData from '@/app/posts.json'
+import redis from '@/app/_lib/redis'
+import postsData from '@/app/config/posts.json'
 import commaNumber from 'comma-number'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'

@@ -7,7 +7,7 @@ import { themeEffect } from './theme-effect'
 import { Analytics } from './analytics'
 import { Header } from './header'
 import { Footer } from './footer'
-import { doge } from './doge'
+import { doge } from './_lib/doge'
 import config from './config'
 
 const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' })

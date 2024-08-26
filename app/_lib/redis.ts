@@ -1,6 +1,6 @@
 import { Redis } from '@upstash/redis'
 import { randomInt } from './utils'
-import config from './config'
+import config from '@/app/config'
 
 const fakeRedis = {
   hincrby: async (key: string, id: string, incr: number) => incr + randomInt(0, 10000),

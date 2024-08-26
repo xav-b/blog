@@ -1,5 +1,5 @@
-import { ThemeToggle } from './theme-toggle'
-import { Logo } from './logo'
+import { ThemeToggle } from './_components/ui/theme-toggle'
+import { Logo } from './_components/ui/logo'
 import Link from 'next/link'
 import config from './config'
 

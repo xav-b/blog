@@ -1,4 +1,4 @@
-import { A } from './(post)/components/a'
+import { A } from './_components/mdx/a'
 import config from './config'
 
 const copyright = () => `© ${new Date().getFullYear()} ${config.author.name}. All rights reserved.`

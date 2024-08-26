@@ -1,5 +1,5 @@
+import { getPosts } from '@/app/_lib/get-posts'
 import { Header } from './header'
-import { getPosts } from '../get-posts'
 
 export const revalidate = 60
 
