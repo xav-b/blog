@@ -55,7 +55,7 @@ export default async function AboutOG() {
                 Xavier Bruhiere
               </div>
               <div tw="flex mb-5" style={font('Roboto Mono 400')}>
-                <span tw="text-gray-400 mr-3">&mdash;</span> Engineering Manager at Binance
+                <span tw="text-gray-400 mr-3">&mdash;</span> Engineering Leader at Binance
               </div>
               <div tw="flex mb-5" style={font('Roboto Mono 400')}>
                 <span tw="text-gray-400 mr-3">&mdash;</span> And seasoned Backend Engineer.

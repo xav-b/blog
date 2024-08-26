@@ -1,6 +1,8 @@
+import '@radix-ui/themes/styles.css'
 import './globals.css'
 
 import { Inter } from 'next/font/google'
+import { Theme, ThemePanel } from '@radix-ui/themes'
 import { themeEffect } from './theme-effect'
 import { Analytics } from './analytics'
 import { Header } from './header'
@@ -8,7 +10,7 @@ import { Footer } from './footer'
 import { doge } from './doge'
 import config from './config'
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' })
 
 export const metadata = {
   title: config.title,
@@ -27,13 +29,14 @@ export const metadata = {
   metadataBase: new URL(config.url),
 }
 
+// NOTE: is it used anywhere?
 export const viewport = {
   themeColor: 'transparent',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.className} antialiased`} suppressHydrationWarning={true}>
+    <html lang="en" className={`${inter.variable} antialiased`} suppressHydrationWarning={true}>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -42,14 +45,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
 
-      <body className="dark:text-gray-100 max-w-2xl m-auto">
-        <main className="p-6 pt-3 md:pt-6 min-h-screen">
-          <Header />
+      <body>
+        <Theme>
+          <main className="dark:text-gray-100 max-w-2xl m-auto p-6 pt-3 md:pt-6 min-h-screen">
+            <Header />
 
-          {children}
-        </main>
+            {children}
+          </main>
 
-        <Footer />
+          <Footer />
+          {config.development.themePanel && <ThemePanel />}
+        </Theme>
         <Analytics />
       </body>
     </html>

@@ -9,7 +9,7 @@ export const theme = {
 }
 
 const config = {
-  url: 'https://xavier.bruhiere.com',
+  url: 'https://xavierbruhiere.com',
   title: "Xavier Bruhiere's blog",
   description: 'Xavier Bruhiere is an engineering leader and senior backend engineer at Binance',
   source: 'https://github.com/xav-b/blog',
@@ -23,6 +23,9 @@ const config = {
   redis: {
     url: 'https://global-apt-bear-30602.upstash.io',
     token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  },
+  development: {
+    themePanel: false,
   },
 }
 
