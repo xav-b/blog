@@ -1,5 +1,6 @@
 import createMDX from '@next/mdx'
 import rehypePrettyCode from 'rehype-pretty-code'
+import remarkGfm from 'remark-gfm'
 
 /** @type {import('rehype-pretty-code').Options} */
 const rehypeOptions = {
@@ -10,6 +11,7 @@ const rehypeOptions = {
 const withMDX = createMDX({
   options: {
     remarkPlugins: [],
+    // remarkPlugins: [remarkGfm],
     rehypePlugins: [[rehypePrettyCode, rehypeOptions]],
   },
 })
