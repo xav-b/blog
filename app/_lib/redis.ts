@@ -13,8 +13,8 @@ const fakeRedis = {
 }
 
 function initRedis() {
-  if (!config.redis.token) {
-    console.error('UPSTASH_REDIS_REST_TOKEN is not defined - redis will be mocked')
+  if (!config.redis?.token || !config.redis?.url) {
+    console.error('invalid redis config - client will be mocked')
     return fakeRedis
   }
   return new Redis(config.redis)
