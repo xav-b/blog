@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { Tabs, Box, Text } from '@radix-ui/themes'
-import { Posts } from '@/app/_components/ui/posts-table'
+import PostsTable from '@/app/_components/ui/posts-table'
 import { getPosts } from '@/app/_lib/get-posts'
 
 export const revalidate = 60
@@ -20,7 +20,7 @@ export default async function Home() {
 
           <Box pt="4">
             <Tabs.Content value="posts">
-              <Posts posts={posts} />
+              <PostsTable posts={posts} />
             </Tabs.Content>
 
             <Tabs.Content value="talks">

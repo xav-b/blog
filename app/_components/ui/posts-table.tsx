@@ -1,5 +1,6 @@
 'use client'
 
+import { Badge, Tooltip } from '@radix-ui/themes'
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
@@ -10,6 +11,20 @@ type SortSetting = ['date' | 'views', 'desc' | 'asc']
 const fetcher = (url: string) => fetch(url).then((res) => res.json())
 
 const getYear = (date: string) => new Date(date).getFullYear()
+
+function ExternalBadge({ post }: { post: Post }) {
+  if (!post.external_link) return null
+
+  const url = new URL(post.external_link)
+
+  return (
+    <Tooltip content={`This article was originally published on ${url.hostname}`} maxWidth="180px">
+      <Badge variant="soft" color="cyan">
+        {post.publisher}
+      </Badge>
+    </Tooltip>
+  )
+}
 
 function List({ posts, sort }: { posts: Post[]; sort: SortSetting }) {
   // sort can be ["date", "desc"] or ["views", "desc"] for example
@@ -52,7 +67,7 @@ function List({ posts, sort }: { posts: Post[]; sort: SortSetting }) {
                   <span className="grow dark:text-gray-100">{post.title}</span>
 
                   <span className="text-gray-500 dark:text-gray-500 text-xs">
-                    {post.viewsFormatted}
+                    {post.external_link ? <ExternalBadge post={post} /> : post.viewsFormatted}
                   </span>
                 </span>
               </span>
@@ -64,7 +79,7 @@ function List({ posts, sort }: { posts: Post[]; sort: SortSetting }) {
   )
 }
 
-export function Posts({ posts: initialPosts }) {
+export default function PostsTable({ posts: initialPosts }) {
   const [sort, setSort] = useState<SortSetting>(['date', 'desc'])
   const { data: posts } = useSWR('/api/posts', fetcher, {
     fallbackData: initialPosts,

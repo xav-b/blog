@@ -6,6 +6,9 @@ interface PostConfig {
   id: string
   date: string
   title: string
+  serie?: string | null
+  external_link?: string | null
+  publisher?: string | null
 }
 
 export interface Post extends PostConfig {
