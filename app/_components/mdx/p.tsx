@@ -6,7 +6,7 @@ export function P({ children }) {
 
 // FIXME: letter spacing and line height are just not as designed ass above -
 // but not using `Text` means theming won't work as expected
-export function oldP({ children }) {
+export function RadixP({ children }) {
   return (
     <Text as="p" mb="5" size="3">
       {children}
