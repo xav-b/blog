@@ -1,0 +1,116 @@
+{
+  "posts": [
+    {
+      "id": "how-to-retain-your-team",
+      "serie": null,
+      "publisher": "<Packt>",
+      "external_link": "https://www.packtpub.com/books/content/how-retain-your-team",
+      "date": "April 11, 2017",
+      "title": "How to retain your team"
+    },
+    {
+      "id": "container-and-languages",
+      "serie": null,
+      "publisher": "<Packt>",
+      "external_link": "https://www.packtpub.com/books/content/how-are-container-technologies-changing-programming-languages",
+      "date": "April 12, 2017",
+      "title": "Containers and Languages"
+    },
+    {
+      "id": "devops-is-not-cd",
+      "serie": null,
+      "publisher": "<Packt>",
+      "external_link": "https://www.packtpub.com/books/content/devops-not-continuous-delivery",
+      "date": "April 14, 2017",
+      "title": "DevOps is not continuous delivery"
+    },
+    {
+      "id": "cloud-applications",
+      "serie": null,
+      "publisher": "<Packt>",
+      "external_link": "https://www.packtpub.com/books/content/using-cloud-applications-and-containers",
+      "date": "November 10, 2015",
+      "title": "Cloud applications and containers"
+    },
+    {
+      "id": "ddd-events",
+      "serie": null,
+      "publisher": "IBM DeveloperWorks",
+      "external_link": "https://www.ibm.com/developerworks/cloud/library/cl-domain-driven-design-event-sourcing/index.html",
+      "date": "April 18, 2018",
+      "title": "Domain Driven Design and event sourcing"
+    },
+    {
+      "id": "rest-client",
+      "serie": null,
+      "publisher": "<Packt>",
+      "external_link": "https://www.packtpub.com/books/content/elegant-restful-client-python-exposing-remote-resources",
+      "date": "November 30, 2015",
+      "title": "Elegant RESTful API client in Python"
+    },
+    {
+      "id": "lambda-funcs-rapid-proto",
+      "serie": null,
+      "publisher": "IBM DeveloperWorks",
+      "external_link": "https://www.ibm.com/developerworks/cloud/library/cl-lambda-functions-rapid-prototyping/index.html",
+      "date": "January 24, 2018",
+      "title": "Lambda functions for rapid prototyping"
+    },
+    {
+      "id": "mono-to-micro-services",
+      "serie": null,
+      "publisher": "<Packt>",
+      "external_link": "https://www.packtpub.com/books/content/mono-micro-services-split-fat-application",
+      "date": "October 16, 2015",
+      "title": "Mono to micro-services: Split the fat application"
+    },
+    {
+      "id": "react-dashboard",
+      "serie": null,
+      "publisher": "<Packt>",
+      "external_link": "https://www.packtpub.com/books/content/react-dashboard-and-visualizing-data",
+      "date": "November 26, 2015",
+      "title": "Building a React Dashboard"
+    },
+    {
+      "id": "reactive-asyncio-intro",
+      "serie": "Reactive Python",
+      "publisher": "<Packt>",
+      "external_link": "https://hub.packtpub.com/reactive-python-asynchronous-programming-rescue-part-1/",
+      "date": "October 5, 2016",
+      "title": "Reactive Python - Asynchronous programming"
+    },
+    {
+      "id": "reactive-rt-events",
+      "serie": "Reactive Python",
+      "publisher": "<Packt>",
+      "external_link": "https://hub.packtpub.com/reactive-python-real-time-events-processing/",
+      "date": "September 26, 2016",
+      "title": "Reactive Python - Real-time events processing"
+    },
+    {
+      "id": "reactive-cross-rpc",
+      "serie": "Reactive Python",
+      "publisher": "<Packt>",
+      "external_link": "https://www.packtpub.com/books/content/reactive-python-asynchronous-programming-rescue-part-2",
+      "date": "October 10, 2016",
+      "title": "Reactive Python - Cross-language RPC conversation"
+    },
+    {
+      "id": "provisioning-containers-ansible",
+      "serie": null,
+      "publisher": "IBM DeveloperWorks",
+      "external_link": "https://www.ibm.com/developerworks/cloud/library/cl-provision-docker-containers-ansible",
+      "date": "September 3, 2015",
+      "title": "Provisioning Docker containers with Ansible"
+    },
+    {
+      "id": "service-discovery-consul",
+      "serie": null,
+      "publisher": "IBM DeveloperWorks",
+      "external_link": "http://www.ibm.com/developerworks/cloud/library/cl-plug-and-play-service-discovery-with-consul-and-docker-bluemix/index.html",
+      "date": "October 15, 2015",
+      "title": "Plug-and-play service discovery with Consul and Docker"
+    }
+  ]
+}

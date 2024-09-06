@@ -1,5 +1,5 @@
-import { getPosts } from '@/app/get-posts'
-import config from '../config'
+import { getPosts } from '@/app/_lib/get-posts'
+import config from '@/app/config'
 
 export async function GET() {
   const posts = await getPosts()

@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import config from './config'
+import config from '@/app/config'
 
 export function Logo() {
   const pathname = usePathname()

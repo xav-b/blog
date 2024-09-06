@@ -1,6 +1,6 @@
 import { Redis } from '@upstash/redis'
 import { randomInt } from './utils'
-import config from './config'
+import config from '@/app/config'
 
 const fakeRedis = {
   hincrby: async (key: string, id: string, incr: number) => incr + randomInt(0, 10000),
@@ -13,8 +13,8 @@ const fakeRedis = {
 }
 
 function initRedis() {
-  if (!config.redis.token) {
-    console.error('UPSTASH_REDIS_REST_TOKEN is not defined - redis will be mocked')
+  if (!config.redis?.token || !config.redis?.url) {
+    console.error('invalid redis config - client will be mocked')
     return fakeRedis
   }
   return new Redis(config.redis)

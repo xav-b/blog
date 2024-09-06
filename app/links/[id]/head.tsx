@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import links from '@/links.json'
+import links from '@/app/config/links.json'
 import config from '@/app/config'
 
 export default function LinkHead({ params }: { params: { id: string } }) {

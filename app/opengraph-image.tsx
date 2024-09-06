@@ -2,9 +2,9 @@ export const runtime = 'edge'
 export const revalidate = 60
 
 import { ImageResponse } from 'next/og'
-import { getPosts } from '@/app/get-posts'
-import { fontURL } from '@/app/utils'
-import config from './config'
+import { getPosts } from '@/app/_lib/get-posts'
+import { fontURL } from '@/app/_lib/utils'
+import config from '@/app/config'
 
 export default async function MainOG() {
   // fonts

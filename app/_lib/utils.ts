@@ -13,3 +13,5 @@ export function randomInt(min: number, max: number) {
 
 export const fontURL = (name: string) =>
   new URL(`../node_modules/@fontsource/inter/files/${name}`, import.meta.url)
+
+export const slugify = (that: string) => that.toLowerCase().replace(' ', '-')
