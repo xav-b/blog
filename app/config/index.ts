@@ -30,13 +30,19 @@ const config = {
     twitter: 'XavierBruhiere',
     connect: 'https://www.linkedin.com/in/engineerxbruhiere/',
     // connect: buildMailTo(),
-    email: 'xavier.bruhiere@gmail.com',
+    email: 'xavier-bruhiere@protonmail.com',
   },
   redis: {
+    // TODO: remove the `UPSTASH` part, the service used should not dictate the
+    // settings name
     url: process.env.UPSTASH_REDIS_REST_URL,
     token: process.env.UPSTASH_REDIS_REST_TOKEN,
   },
   development: {
+    // show radix-ui theme panel
+    // this is not exposed as a dynamic thing as I expect the panel to be useful as
+    // a one-shot thing, e.g. at the beginning of the project when figuring out the
+    // look and feel
     themePanel: false,
   },
 }
