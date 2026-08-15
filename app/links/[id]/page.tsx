@@ -1,8 +1,8 @@
 export const runtime = 'edge'
 
-import links from '@/links.json'
 import { headers } from 'next/headers'
 import { redirect, notFound } from 'next/navigation'
+import links from '@/app/config/links.json'
 
 export default function Link({
   params,

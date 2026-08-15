@@ -1,11 +1,12 @@
 import { Redis } from '@upstash/redis'
 import { randomInt } from './utils'
-import config from './config'
+import config from '@/app/config'
 
 const fakeRedis = {
   hincrby: async (key: string, id: string, incr: number) => incr + randomInt(0, 10000),
   hget: async (key: string, id: string) => randomInt(0, 10000),
   hgetall: async (key: string) => ({
+    // FIXME: that object should return all the post ids with a random value
     somePage: randomInt(0, 100000).toString(),
   }),
   set: async (key: string, data: any) => null,
@@ -13,8 +14,8 @@ const fakeRedis = {
 }
 
 function initRedis() {
-  if (!config.redis.token) {
-    console.error('UPSTASH_REDIS_REST_TOKEN is not defined - redis will be mocked')
+  if (!config.redis?.token || !config.redis?.url) {
+    console.error('invalid redis config - client will be mocked')
     return fakeRedis
   }
   return new Redis(config.redis)

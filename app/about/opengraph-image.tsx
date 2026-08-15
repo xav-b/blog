@@ -2,8 +2,8 @@ export const runtime = 'edge'
 export const revalidate = 60
 
 import { ImageResponse } from 'next/og'
-import { getPosts } from '@/app/get-posts'
 import commaNumber from 'comma-number'
+import { getPosts } from '@/app/_lib/get-posts'
 
 export default async function AboutOG() {
   const selfie = fetch(new URL(`../../public/images/xavier-3d4cecf.jpg`, import.meta.url)).then(

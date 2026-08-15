@@ -7,7 +7,6 @@ import { themeEffect } from './theme-effect'
 import { Analytics } from './analytics'
 import { Header } from './header'
 import { Footer } from './footer'
-import { doge } from './doge'
 import config from './config'
 
 const inter = Inter({ subsets: ['latin'], display: 'swap', variable: '--font-inter' })
@@ -40,7 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(${themeEffect.toString()})();(${doge.toString()})();`,
+            __html: `(${themeEffect.toString()})();`,
           }}
         />
       </head>
@@ -51,10 +50,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Header />
 
             {children}
-          </main>
 
-          <Footer />
-          {config.development.themePanel && <ThemePanel />}
+            <Footer />
+            {config.development.themePanel && <ThemePanel />}
+          </main>
         </Theme>
         <Analytics />
       </body>

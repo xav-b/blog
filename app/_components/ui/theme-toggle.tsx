@@ -1,7 +1,8 @@
 'use client'
+
 import { useEffect, useState, useCallback } from 'react'
-import { themeEffect } from './theme-effect'
 import va from '@vercel/analytics'
+import { themeEffect } from '@/app/theme-effect'
 
 export function ThemeToggle() {
   // a `null` preference implies auto
@@ -97,6 +98,8 @@ export function ThemeToggle() {
             localStorage.setItem('theme', newPreference)
           }
 
+          // NOTE: I think this is a custom events, and therefore only works on
+          // the paid plan - may want to add a disable flag
           va.track('Theme toggle', {
             Theme: newPreference === null ? 'system' : newPreference,
           })
